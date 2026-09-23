@@ -149,3 +149,15 @@ def test_staging_input_itself_is_protected(admin_app, tmp_path):
     result = admin_app.test_cli_runner().invoke(args=["catalog-admin", "stage", str(source)])
     assert result.exit_code != 0
     assert source.read_bytes() == original
+
+
+def test_staging_cannot_replace_browser_active_catalog(admin_app, tmp_path):
+    active = tmp_path / "active.csv"
+    original = (ROOT / "data/hackathon_dataset.csv").read_bytes()
+    active.write_bytes(original)
+    admin_app.config.update(CATALOG_ACTIVE_PATH=str(active), CATALOG_STAGING_PATH=str(active))
+    result = admin_app.test_cli_runner().invoke(
+        args=["catalog-admin", "stage", str(ROOT / "data/hackathon_dataset.csv")]
+    )
+    assert result.exit_code != 0
+    assert active.read_bytes() == original

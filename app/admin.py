@@ -45,7 +45,8 @@ def stage_catalog(path: Path) -> int:
     contractors = read_admin_catalog(path)
     destination = Path(current_app.config["CATALOG_STAGING_PATH"])
     protected = {
-        Path(current_app.config[key]).resolve() for key in ("DATABASE_PATH", "DATASET_PATH")
+        Path(current_app.config[key]).resolve()
+        for key in ("DATABASE_PATH", "DATASET_PATH", "CATALOG_ACTIVE_PATH")
     }
     protected.add(path.resolve())
     if destination.is_symlink() or destination.resolve() in protected:

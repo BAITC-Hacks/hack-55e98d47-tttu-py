@@ -14,11 +14,8 @@
 3. Тесты, реализующие контракт.
 4. Реализация.
 
-`feature/jonas` владеет контрактом.
-
-`backend/ksusha` реализует backend согласно контракту.
-
-`frontend/denis` реализует UI согласно контракту.
+`README.md` — основной вход для пользователя и проверяющего; этот контракт
+фиксирует поведение, а код и тесты подтверждают его реализацию.
 
 Любое изменение поведения, API, DTO, фильтрации, ranking или результата сначала отражается здесь.
 
@@ -289,14 +286,11 @@ LLM запрещено самостоятельно решать:
 
 AI получает только уже проверенных кандидатов и структурированные evidence.
 
-AI может:
-
-* анализировать смысл `description`;
-* выделять конкретные особенности;
-* формулировать 1–2 предложения объяснения;
-* объяснять различия между подходящими кандидатами.
-
-AI не может придумывать отсутствующие факты.
+AI выбирает `reason_id` из переданных фрагментов `description` для каждого
+уже отобранного кандидата. Python проверяет candidate/reason IDs и собирает
+1–2 предложения из структурированных фактов и исходной цитаты. Свободная
+генерация текста, изменение фактов, eligibility и порядка не допускаются.
+Невалидный ответ целиком заменяется deterministic fallback.
 
 ## 6.3 Deterministic Requirement
 
@@ -406,18 +400,20 @@ Pipeline сохраняет причины исключения кандидат
 
 Ranking должен быть прозрачным и deterministic.
 
-Начальная стратегия:
+Реализованная стратегия (`app/services/ranking.py`):
 
 ```text
-format match       mandatory
-budget fit         scoring signal
-language match     scoring signal when requested
-duration fit       scoring signal when requested
-description match  semantic scoring signal
-stable tie-break   mandatory
+score = 35 * budget + 45 * description + 10 * language + 10 * duration
+order = score DESC, id ASC
 ```
 
 Hard constraints нельзя компенсировать высоким semantic score.
+
+`budget` = price_from_kzt / budget_kzt (при нулевом бюджете — 1 для прошедшей
+фильтр нулевой цены). `description` — среднее долей совпадений основ слов формата
+и категории, диапазон [0, 1]. `language` = 1 при явно запрошенном совпадающем
+языке, иначе 0. `duration` = requested_hours / max_hours; для max_hours=null — 1,
+если длительность не запрошена — 0. Вычисления используют Fraction.
 
 Например:
 
@@ -474,7 +470,7 @@ LLM получает evidence, а не весь каталог.
 
 Explanation:
 
-* русский язык;
+* русский язык по умолчанию; locale=kk/en меняет framing согласно §23;
 * 1–2 предложения;
 * конкретное;
 * основано только на evidence;
@@ -559,8 +555,8 @@ Success:
 ```json
 {
   "status": "matched",
-  "count": 2,
-  "message": "Найдено 2 подходящих подрядчика.",
+  "count": 1,
+  "message": "Найдено подходящих подрядчиков: 1. Показаны все подрядчики города и категории, прошедшие условия заказа; их меньше трёх.",
   "recommendations": [
     {
       "id": "HK-00000",
@@ -695,7 +691,8 @@ Synthetic / imputed indicators when applicable
 │   ├── templates/
 │   │   ├── base.html
 │   │   ├── index.html
-│   │   └── components/
+│   │   ├── catalog_admin.html
+│   │   └── export_error.html
 │   │
 │   └── static/
 │       ├── css/
@@ -708,98 +705,25 @@ Synthetic / imputed indicators when applicable
     ├── conftest.py
     ├── unit/
     ├── integration/
-    └── e2e/
+    └── frontend/
 ```
 
 ---
 
-# 16. Ownership
+# 16. Module boundaries
 
-## backend/ksusha
-
-Owns:
-
-```text
-app/models/**
-app/repositories/**
-app/services/**
-app/ai/**
-app/api/**
-backend unit tests
-```
-
-## frontend/denis
-
-Owns:
-
-```text
-app/web/**
-app/templates/**
-app/static/**
-frontend tests
-```
-
-## feature/jonas
-
-Owns:
-
-```text
-CONTRACT.md
-integration tests
-E2E tests
-regression tests
-cross-branch integration
-README verification
-```
+`models` validates DTOs; `repositories` validates and persists catalog data;
+`services` owns filtering, ranking, evidence, export and catalog activation.
+`api` and `web` adapt transport only. Templates and static files render the UI.
 
 ---
 
-# 17. Agent Orchestration
+# 17. Release verification
 
-Все три lead agents работают как:
-
-**Astra Sol**
-
-Sub-agents:
-
-**Luna 5.4 Medium**
-
-Для substantial task Astra обязан:
-
-1. проверить доступные skills;
-2. использовать подходящие skills;
-3. разбить задачу на независимые исследования;
-4. делегировать узкие задачи Luna;
-5. выполнять независимые исследования параллельно;
-6. сравнить результаты;
-7. самостоятельно принять архитектурное решение;
-8. реализовать решение;
-9. отправить реализацию свежим Luna на review;
-10. выполнить тесты;
-11. исправить подтверждённые проблемы;
-12. повторить verification.
-
-Luna используется для:
-
-* repository reconnaissance;
-* requirement extraction;
-* dataset analysis;
-* edge-case discovery;
-* focused implementation research;
-* test generation;
-* code review;
-* contract comparison;
-* adversarial QA;
-* regression analysis.
-
-Astra отвечает за:
-
-* architecture;
-* trade-offs;
-* final decisions;
-* implementation strategy;
-* cross-cutting decisions;
-* final verification.
+Every behavioral correction requires a focused regression check. Final release
+verification runs the complete pytest suite, Ruff, Black, live demo scenarios,
+and production startup against the same repository state. README and the current
+verification report record only executed checks; historical results are not reused.
 
 ---
 
@@ -1060,8 +984,9 @@ failures do not echo content, paths, secrets or internal exceptions.
 the operator-configured `CATALOG_STAGING_PATH` (default `instance/catalog-staged.sqlite3`)
 by building a temporary database and atomically replacing the staging file. Active
 CSV/SQLite paths cannot be selected as staging destinations. Failure preserves the
-previous staging snapshot. No automatic activation, public upload, or change to
-startup seeding is included; the running recommendation catalog remains unchanged.
+previous staging snapshot. These CLI commands do not activate data or change
+startup seeding; the running recommendation catalog remains unchanged.
+Authenticated browser activation is specified separately in section 23.5.
 
 ## 23.4 Integrated Web locale, snapshots and comparison
 
