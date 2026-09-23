@@ -1,11 +1,18 @@
-"""Thin Flask routes for the server-rendered recommendation experience."""
+"""Thin Flask routes for the localized server-rendered recommendation experience."""
 
 from __future__ import annotations
 
+import copy
+import csv
+import io
+import json
 from collections.abc import Mapping
 from typing import Any
 
-from flask import Blueprint, current_app, render_template, request
+from flask import Blueprint, Response, current_app, render_template, request
+
+from .exports import ExportSnapshot, ExportStore
+from .i18n import copy_for, locale_options, option_label, option_list, resolve_locale, text
 
 web = Blueprint("web", __name__)
 
@@ -31,13 +38,33 @@ _CATEGORIES = (
     "Шоу-программа",
 )
 _LANGUAGES = ("русский", "казахский", "английский")
-_REASON_LABELS = {
-    "busy": "заняты на выбранную дату",
-    "over_budget": "превышают указанный бюджет",
-    "wrong_format": "не работают с выбранным форматом",
-    "duration_too_long": "не подходят по длительности",
-    "language_mismatch": "не поддерживают выбранный язык",
+_REASON_KEYS = {
+    "busy": "reason_busy",
+    "over_budget": "reason_over_budget",
+    "wrong_format": "reason_wrong_format",
+    "duration_too_long": "reason_duration",
+    "language_mismatch": "reason_language",
 }
+_EXPORT_QUERY_FIELDS = (
+    "city",
+    "event_date",
+    "event_format",
+    "category",
+    "budget_kzt",
+    "duration_hours",
+    "language",
+)
+_EXPORT_CARD_FIELDS = (
+    "id",
+    "anon_name",
+    "category",
+    "city",
+    "price_from_kzt",
+    "synthetic",
+    "city_imputed",
+    "price_imputed",
+    "explanation",
+)
 
 
 def _blank_form() -> dict[str, str]:
@@ -56,7 +83,7 @@ def _submitted_form() -> dict[str, str]:
     return {name: request.form.get(name, "").strip() for name in _blank_form()}
 
 
-def _service_payload(form: Mapping[str, str]) -> dict[str, Any]:
+def _service_payload(form: Mapping[str, str], locale: str) -> dict[str, Any]:
     try:
         payload: dict[str, Any] = {
             "city": form["city"],
@@ -68,7 +95,7 @@ def _service_payload(form: Mapping[str, str]) -> dict[str, Any]:
         if form["duration_hours"]:
             payload["duration_hours"] = float(form["duration_hours"])
     except ValueError:
-        raise ValueError("Проверьте бюджет и длительность: нужны числовые значения.") from None
+        raise ValueError(text(locale, "number_error")) from None
     if form["language"]:
         payload["language"] = form["language"]
     return payload
@@ -83,130 +110,305 @@ def _get_service() -> Any:
     return service
 
 
-def _format_price(value: Any) -> str:
+def _export_store() -> ExportStore:
+    store = current_app.extensions.get("web_export_store")
+    if store is None:
+        store = ExportStore()
+        current_app.extensions["web_export_store"] = store
+    return store
+
+
+def _format_price(value: Any, locale: str) -> str:
     try:
         return f"{int(value):,}".replace(",", " ")
     except (TypeError, ValueError):
-        return "не указана"
+        return text(locale, "unknown_price")
 
 
-def _matched_view(result: Mapping[str, Any]) -> dict[str, Any]:
-    source_items = list(result.get("recommendations") or [])
-    cards = []
-    for item in source_items[:3]:
-        cards.append(
+def _data_notes(card: Mapping[str, Any], locale: str) -> str:
+    notes = []
+    if card.get("synthetic"):
+        notes.append(text(locale, "synthetic"))
+    if card.get("city_imputed"):
+        notes.append(text(locale, "city_imputed"))
+    if card.get("price_imputed"):
+        notes.append(text(locale, "price_imputed"))
+    return "; ".join(notes) if notes else text(locale, "no_data_notes")
+
+
+def _comparison(cards: list[dict[str, Any]], locale: str) -> dict[str, Any] | None:
+    if len(cards) < 2:
+        return None
+    return {
+        "columns": [{"name": card["anon_name"]} for card in cards],
+        "rows": [
+            {"label": text(locale, "profile_id"), "values": [card["id"] for card in cards]},
+            {"label": text(locale, "category"), "values": [card["category"] for card in cards]},
+            {"label": text(locale, "city"), "values": [card["city"] for card in cards]},
             {
-                "id": item.get("id", ""),
-                "anon_name": item.get("anon_name") or "Подрядчик",
-                "category": item.get("category") or "Категория не указана",
-                "city": item.get("city") or "Город не указан",
-                "price": _format_price(item.get("price_from_kzt")),
-                "explanation": item.get("explanation") or "Объяснение временно недоступно.",
-                "synthetic": bool(item.get("synthetic")),
-                "city_imputed": bool(item.get("city_imputed")),
-                "price_imputed": bool(item.get("price_imputed")),
-            }
-        )
+                "label": text(locale, "price_from"),
+                "values": [f'{card["price"]} ₸' for card in cards],
+            },
+            {
+                "label": text(locale, "data_notes"),
+                "values": [card["data_notes"] for card in cards],
+            },
+        ],
+    }
+
+
+def _matched_view(result: Mapping[str, Any], locale: str) -> dict[str, Any]:
+    raw_source_items = list(result.get("recommendations") or [])
+    source_items = [dict(item) for item in raw_source_items[:3] if isinstance(item, Mapping)]
+    cards = []
+    for item in source_items:
+        card = {
+            "id": item.get("id", ""),
+            "anon_name": item.get("anon_name") or text(locale, "unknown_contractor"),
+            "category": option_label(
+                locale, "categories", item.get("category") or text(locale, "unknown_category")
+            ),
+            "city": option_label(
+                locale, "cities", item.get("city") or text(locale, "unknown_city")
+            ),
+            "price": _format_price(item.get("price_from_kzt"), locale),
+            "explanation": item.get("explanation") or text(locale, "missing_explanation"),
+            "synthetic": bool(item.get("synthetic")),
+            "city_imputed": bool(item.get("city_imputed")),
+            "price_imputed": bool(item.get("price_imputed")),
+        }
+        card["data_notes"] = _data_notes(card, locale)
+        cards.append(card)
 
     if not cards:
         return {
             "kind": "empty",
-            "title": "Рекомендации не получены",
-            "message": "Сервис вернул пустой результат. Измените условия или повторите попытку.",
+            "title": text(locale, "empty_title"),
+            "message": text(locale, "empty_message"),
         }
 
     count = len(cards)
-    suffix = (
-        "Показан единственный найденный вариант."
-        if count == 1
-        else ("Показаны оба найденных варианта." if count == 2 else "Показаны три лучших варианта.")
-    )
+    count_key = {1: "count_one", 2: "count_two", 3: "count_three"}[count]
+    backend_message = result.get("message")
     return {
         "kind": "matched",
-        "title": "Подходящие подрядчики",
+        "title": text(locale, "matched_title"),
         "message": (
-            f"Показано лучших вариантов: {count}."
-            if len(source_items) > 3
-            else result.get("message") or f"Найдено вариантов: {count}."
+            text(locale, "truncated_message", count=count)
+            if len(raw_source_items) > 3
+            else (
+                str(backend_message)
+                if locale == "ru" and backend_message
+                else text(locale, "matched_message", count=count)
+            )
         ),
-        "count_note": suffix,
+        "source_message": str(backend_message) if locale != "ru" and backend_message else None,
+        "count_note": text(locale, count_key),
         "cards": cards,
+        "comparison": _comparison(cards, locale),
+        "_export_recommendations": tuple(source_items),
     }
 
 
-def _result_view(result: Mapping[str, Any]) -> dict[str, Any]:
+def _result_view(result: Mapping[str, Any], locale: str, form: Mapping[str, str]) -> dict[str, Any]:
     status = str(result.get("status", "")).lower()
     if status == "matched":
-        return _matched_view(result)
+        return _matched_view(result, locale)
     if status == "category_not_found":
         return {
             "kind": "category_not_found",
-            "title": "Категория не найдена",
-            "message": result.get("message")
-            or "В этом городе нет подрядчиков выбранной категории.",
+            "title": text(locale, "category_not_found_title"),
+            "message": text(
+                locale,
+                "category_not_found_message",
+                city=option_label(locale, "cities", form["city"]),
+                category=option_label(locale, "categories", form["category"]),
+            ),
         }
     if status == "no_eligible_candidates":
+        raw_reasons = result.get("reasons") or {}
         reasons = [
-            {"label": label, "count": int((result.get("reasons") or {}).get(key, 0))}
-            for key, label in _REASON_LABELS.items()
-            if int((result.get("reasons") or {}).get(key, 0)) > 0
+            {"label": text(locale, label_key), "count": int(raw_reasons.get(key, 0))}
+            for key, label_key in _REASON_KEYS.items()
+            if int(raw_reasons.get(key, 0)) > 0
         ]
         return {
             "kind": "no_eligible_candidates",
-            "title": "Нет подходящих вариантов",
-            "message": result.get("message")
-            or "Подрядчики есть, но ни один не прошёл условия заказа.",
+            "title": text(locale, "no_eligible_title"),
+            "message": text(locale, "no_eligible_message"),
             "reasons": reasons,
         }
     return {
         "kind": "empty",
-        "title": "Рекомендации не получены",
-        "message": "Сервис вернул ответ без понятного статуса. Повторите попытку.",
+        "title": text(locale, "empty_title"),
+        "message": text(locale, "empty_message"),
     }
 
 
-@web.route("/", methods=["GET", "POST"])
-def index():
-    form = _blank_form()
-    result_view = {
+def _idle_view(locale: str) -> dict[str, str]:
+    return {
         "kind": "idle",
-        "title": "Здесь появятся рекомендации",
-        "message": "Заполните форму — мы покажем до трёх подходящих подрядчиков и объясним каждый выбор.",
+        "title": text(locale, "idle_title"),
+        "message": text(locale, "idle_message"),
     }
-    response_status = 200
 
-    if request.method == "POST":
-        form = _submitted_form()
-        try:
-            result = _get_service().recommend(_service_payload(form))
-            if not isinstance(result, Mapping):
-                raise TypeError("Recommendation service returned a non-mapping result")
-            result_view = _result_view(result)
-        except (ValueError, TypeError) as exc:
-            result_view = {
-                "kind": "validation_error",
-                "title": "Проверьте введённые данные",
-                "message": str(exc) or "Некорректные параметры запроса.",
-            }
-            response_status = 422
-        except Exception:
-            current_app.logger.exception("Web recommendation request failed")
-            result_view = {
-                "kind": "backend_error",
-                "title": "Не удалось получить рекомендации",
-                "message": "Сервис временно недоступен. Попробуйте ещё раз — введённые данные сохранены.",
-            }
-            response_status = 503
 
+def _error_view(locale: str, kind: str, message: str | None = None) -> dict[str, str]:
+    if kind == "validation_error":
+        return {
+            "kind": kind,
+            "title": text(locale, "validation_title"),
+            "message": (
+                message if locale == "ru" and message else text(locale, "validation_message")
+            ),
+        }
+    return {
+        "kind": "backend_error",
+        "title": text(locale, "backend_title"),
+        "message": text(locale, "backend_message"),
+    }
+
+
+def _view_from_snapshot(
+    snapshot: ExportSnapshot, locale: str, form: Mapping[str, str]
+) -> dict[str, Any]:
+    if snapshot.state_kind in {"validation_error", "backend_error"}:
+        return _error_view(locale, snapshot.state_kind)
+    if snapshot.result is None:
+        return _idle_view(locale)
+    return _result_view(snapshot.result, locale, form)
+
+
+def _render_index(
+    *, form: Mapping[str, str], result_view: Mapping[str, Any], locale: str, status: int = 200
+):
     return (
         render_template(
             "index.html",
             form=form,
-            cities=_CITIES,
-            event_formats=_EVENT_FORMATS,
-            categories=_CATEGORIES,
-            languages=_LANGUAGES,
+            locale=locale,
+            locale_options=locale_options(locale),
+            copy=copy_for(locale),
+            cities=option_list(locale, "cities", _CITIES),
+            event_formats=option_list(locale, "event_formats", _EVENT_FORMATS),
+            categories=option_list(locale, "categories", _CATEGORIES),
+            languages=option_list(locale, "languages", _LANGUAGES),
             result=result_view,
         ),
-        response_status,
+        status,
     )
+
+
+@web.route("/", methods=["GET", "POST"])
+def index():
+    locale = resolve_locale(request.form.get("locale") or request.args.get("locale"))
+    form = _blank_form()
+    result_view: dict[str, Any] = _idle_view(locale)
+    response_status = 200
+
+    if request.method == "POST":
+        form = _submitted_form()
+        if request.form.get("switch_locale"):
+            view_id = request.form.get("view_id", "")
+            snapshot = _export_store().get(view_id) if view_id else None
+            result_view = (
+                _view_from_snapshot(snapshot, locale, form) if snapshot else _idle_view(locale)
+            )
+            if snapshot:
+                result_view.pop("_export_recommendations", None)
+                result_view["view_id"] = view_id
+                if result_view.get("kind") == "matched":
+                    result_view["export_id"] = view_id
+        else:
+            try:
+                payload = _service_payload(form, locale)
+                result = _get_service().recommend(payload)
+                if not isinstance(result, Mapping):
+                    raise TypeError("Recommendation service returned a non-mapping result")
+                result_view = _result_view(result, locale, form)
+                result_view.pop("_export_recommendations", None)
+                view_id = _export_store().put(
+                    ExportSnapshot(dict(payload), copy.deepcopy(dict(result)))
+                )
+                result_view["view_id"] = view_id
+                if result_view.get("kind") == "matched":
+                    result_view["export_id"] = view_id
+            except (ValueError, TypeError) as exc:
+                result_view = _error_view(locale, "validation_error", str(exc))
+                result_view["view_id"] = _export_store().put(
+                    ExportSnapshot({}, None, "validation_error")
+                )
+                response_status = 422
+            except Exception:
+                current_app.logger.exception("Web recommendation request failed")
+                result_view = _error_view(locale, "backend_error")
+                result_view["view_id"] = _export_store().put(
+                    ExportSnapshot({}, None, "backend_error")
+                )
+                response_status = 503
+
+    return _render_index(form=form, result_view=result_view, locale=locale, status=response_status)
+
+
+def _safe_csv_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    cell = str(value)
+    if cell.startswith(("=", "+", "-", "@", "\t", "\r")):
+        return f"'{cell}"
+    return cell
+
+
+@web.post("/recommendations/export/<format_name>")
+def export_recommendations(format_name: str):
+    locale = resolve_locale(request.form.get("locale"))
+    snapshot = _export_store().get(request.form.get("export_id", ""))
+    if snapshot is None or format_name not in {"csv", "json"}:
+        return (
+            render_template(
+                "export_error.html",
+                locale=locale,
+                locale_options=locale_options(locale),
+                copy=copy_for(locale),
+                form=None,
+            ),
+            404,
+        )
+
+    payload = {
+        "query": snapshot.query,
+        "count": len(snapshot.recommendations),
+        "recommendations": list(snapshot.recommendations),
+    }
+    if format_name == "json":
+        response = Response(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            content_type="application/json; charset=utf-8",
+        )
+        filename = "recommendations.json"
+    else:
+        output = io.StringIO(newline="")
+        fieldnames = [f"query_{field}" for field in _EXPORT_QUERY_FIELDS] + list(
+            _EXPORT_CARD_FIELDS
+        )
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for card in snapshot.recommendations:
+            writer.writerow(
+                {
+                    **{
+                        f"query_{field}": _safe_csv_cell(snapshot.query.get(field))
+                        for field in _EXPORT_QUERY_FIELDS
+                    },
+                    **{field: _safe_csv_cell(card.get(field)) for field in _EXPORT_CARD_FIELDS},
+                }
+            )
+        response = Response("\ufeff" + output.getvalue(), content_type="text/csv; charset=utf-8")
+        filename = "recommendations.csv"
+
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response

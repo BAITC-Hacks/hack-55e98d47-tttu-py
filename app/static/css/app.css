@@ -37,6 +37,12 @@ body { min-width: 320px; }
 .recommendation-card { border-color: rgba(67, 85, 185, .25); }
 .explanation-block { background: var(--app-explanation); }
 .explanation-text { font-size: 1.05rem; line-height: 1.6; }
+.comparison-table { min-width: 42rem; }
+.comparison-scroll:focus-visible,
+.locale-switcher .btn:focus-visible {
+  outline: .2rem solid rgba(67, 85, 185, .45);
+  outline-offset: .15rem;
+}
 
 @media (min-width: 992px) {
   .result-shell { padding: 1.75rem; }
