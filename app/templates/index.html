@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block title %}{{ copy.page_title }}{% endblock %}
 {% block content %}
-  <div class="row g-4 g-xl-5 align-items-start">
-    <section class="col-12 col-lg-5" aria-labelledby="form-title">
-      <div class="mb-4">
-        <p class="text-uppercase text-primary fw-semibold small mb-2">{{ copy.kicker }}</p>
-        <h1 id="form-title" class="display-6 fw-bold mb-3">{{ copy.form_title }}</h1>
-        <p class="lead text-body-secondary mb-0">{{ copy.form_intro }}</p>
+  <div class="workspace">
+    <section class="search-section" aria-labelledby="form-title">
+      <div class="hero">
+        <p class="eyebrow">{{ copy.kicker }}</p>
+        <h1 id="form-title" class="hero-title">{{ copy.form_title }}</h1>
+        <p class="hero-description">{{ copy.form_intro }}</p>
       </div>
 
-      <form method="post" action="{{ url_for('web.index') }}" class="card border-0 shadow-sm" novalidate data-recommendation-form>
+      <form method="post" action="{{ url_for('web.index') }}" class="search-card" novalidate data-recommendation-form>
         <input type="hidden" name="locale" value="{{ locale }}">
-        <div class="card-body p-3 p-sm-4">
-          <p class="small text-body-secondary"><span aria-hidden="true">*</span> {{ copy.required_note }}</p>
-          <div class="row g-3">
-            <div class="col-12 col-sm-6">
+        <div class="search-card-body">
+          <p class="required-note"><span aria-hidden="true">*</span> {{ copy.required_note }}</p>
+          <div class="form-grid">
+            <div class="form-field">
               <label class="form-label" for="city">{{ copy.city }} <span aria-hidden="true">*</span><span class="visually-hidden">({{ copy.required }})</span></label>
               <select class="form-select" id="city" name="city" required autocomplete="address-level2" aria-describedby="city-error">
                 <option value="">{{ copy.city_placeholder }}</option>
@@ -22,13 +22,13 @@
               </select>
               <div class="invalid-feedback" id="city-error">{{ copy.city_error }}</div>
             </div>
-            <div class="col-12 col-sm-6">
+            <div class="form-field">
               <label class="form-label" for="event_date">{{ copy.event_date }} <span aria-hidden="true">*</span><span class="visually-hidden">({{ copy.required }})</span></label>
               <input class="form-control" type="date" id="event_date" name="event_date" value="{{ form.event_date }}" required aria-describedby="event-date-help event-date-error">
-              <div class="form-text" id="event-date-help">{{ copy.date_help }}</div>
+              <div class="visually-hidden" id="event-date-help">{{ copy.date_help }}</div>
               <div class="invalid-feedback" id="event-date-error">{{ copy.date_error }}</div>
             </div>
-            <div class="col-12">
+            <div class="form-field">
               <label class="form-label" for="event_format">{{ copy.event_format }} <span aria-hidden="true">*</span><span class="visually-hidden">({{ copy.required }})</span></label>
               <select class="form-select" id="event_format" name="event_format" required aria-describedby="event-format-error">
                 <option value="">{{ copy.format_placeholder }}</option>
@@ -36,7 +36,7 @@
               </select>
               <div class="invalid-feedback" id="event-format-error">{{ copy.format_error }}</div>
             </div>
-            <div class="col-12">
+            <div class="form-field">
               <label class="form-label" for="category">{{ copy.category }} <span aria-hidden="true">*</span><span class="visually-hidden">({{ copy.required }})</span></label>
               <select class="form-select" id="category" name="category" required aria-describedby="category-error">
                 <option value="">{{ copy.category_placeholder }}</option>
@@ -44,17 +44,17 @@
               </select>
               <div class="invalid-feedback" id="category-error">{{ copy.category_error }}</div>
             </div>
-            <div class="col-12 col-sm-6">
+            <div class="form-field">
               <label class="form-label" for="budget_kzt">{{ copy.budget }} <span aria-hidden="true">*</span><span class="visually-hidden">({{ copy.required }})</span></label>
               <input class="form-control" type="number" id="budget_kzt" name="budget_kzt" value="{{ form.budget_kzt }}" required min="0" step="1" inputmode="numeric" placeholder="800000" aria-describedby="budget-error">
               <div class="invalid-feedback" id="budget-error">{{ copy.budget_error }}</div>
             </div>
-            <div class="col-12 col-sm-6">
+            <div class="form-field">
               <label class="form-label" for="duration_hours">{{ copy.duration }} <span class="text-body-secondary fw-normal">({{ copy.optional }})</span></label>
               <input class="form-control" type="number" id="duration_hours" name="duration_hours" value="{{ form.duration_hours }}" min="0.5" step="0.5" inputmode="decimal" placeholder="6" aria-describedby="duration-error">
               <div class="invalid-feedback" id="duration-error">{{ copy.duration_error }}</div>
             </div>
-            <div class="col-12">
+            <div class="form-field">
               <label class="form-label" for="language">{{ copy.communication_language }} <span class="text-body-secondary fw-normal">({{ copy.optional }})</span></label>
               <select class="form-select" id="language" name="language">
                 <option value="">{{ copy.any_language }}</option>
@@ -62,68 +62,61 @@
               </select>
             </div>
           </div>
-          <button class="btn btn-primary btn-lg w-100 mt-4" type="submit">{{ copy.submit }}</button>
+          <div class="form-actions"><p class="form-assurance"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ copy.date_help }}</p><button class="btn btn-primary search-submit" type="submit">{{ copy.submit }}<span aria-hidden="true">↗</span></button></div>
         </div>
       </form>
     </section>
 
-    <section class="col-12 col-lg-7" aria-labelledby="results-title" aria-live="polite" aria-atomic="false">
+    <section class="results-section" aria-labelledby="results-title" aria-live="polite" aria-atomic="false">
       <div class="result-shell result-{{ result.kind }}" data-result-kind="{{ result.kind }}">
-        <div class="d-flex align-items-start gap-3 mb-3">
+        <div class="result-heading">
           <div class="state-mark" aria-hidden="true"></div>
           <div>
-            <h2 id="results-title" class="h3 mb-2" tabindex="-1">{{ result.title }}</h2>
+            <h2 id="results-title" class="result-title" tabindex="-1">{{ result.title }}</h2>
             <p class="text-body-secondary mb-0">{{ result.message }}</p>
             {% if result.source_message %}
-              <p class="small text-body-secondary mt-2 mb-0"><span class="fw-semibold">{{ copy.source_message_label }}:</span> <span lang="ru">{{ result.source_message }}</span></p>
+              <p class="small text-body-secondary mt-2 mb-0"><span class="fw-semibold">{{ copy.source_message_label }}:</span> <span lang="{{ result.generation_locale }}">{{ result.source_message }}</span></p>
             {% endif %}
           </div>
         </div>
 
         {% if result.kind == "matched" %}
-          <p class="small fw-semibold mb-3">{{ result.count_note }}</p>
+          <p class="result-count">{{ result.count_note }}</p>
           <div class="row row-cols-1 g-3">
             {% for item in result.cards %}
               <div class="col">
                 <article class="card recommendation-card h-100" aria-labelledby="recommendation-{{ loop.index }}">
                   <div class="card-body p-3 p-sm-4">
-                    <div class="d-flex flex-wrap gap-2 mb-3">
+                    <div class="contractor-heading">
+                      <div class="contractor-identity">
+                        <span class="contractor-avatar" aria-hidden="true">{{ item.anon_name[:1] }}</span>
+                        <div>
+                          <h3 class="contractor-name" id="recommendation-{{ loop.index }}">{{ item.anon_name }}</h3>
+                          <p class="contractor-meta">{{ item.category }} <span aria-hidden="true">·</span> {{ item.city }}</p>
+                          <p class="contractor-id">{{ copy.profile_id }}: {{ item.id }}</p>
+                        </div>
+                      </div>
+                      <div class="contractor-price">
+                        <p><span>{{ copy.price_from }}</span> <strong>{{ item.price }} ₸</strong></p>
+                        <small>{{ copy.price_caveat }}</small>
+                      </div>
+                    </div>
+                    {% if item.synthetic or item.city_imputed or item.price_imputed %}
+                    <div class="data-badges">
                       {% if item.synthetic %}<span class="badge text-bg-warning">{{ copy.synthetic }}</span>{% endif %}
                       {% if item.city_imputed %}<span class="badge text-bg-secondary">{{ copy.city_imputed }}</span>{% endif %}
                       {% if item.price_imputed %}<span class="badge text-bg-secondary">{{ copy.price_imputed }}</span>{% endif %}
                     </div>
-                    <h3 class="h4 mb-1 text-break" id="recommendation-{{ loop.index }}">{{ item.anon_name }}</h3>
-                    <p class="text-body-secondary mb-1 text-break">{{ item.category }} <span aria-hidden="true">·</span> {{ item.city }}</p>
-                    <p class="small text-body-secondary mb-3">{{ copy.profile_id }}: {{ item.id }}</p>
-                    <section class="explanation-block p-3 rounded-3 mb-3" aria-label="{{ copy.original_explanation }}">
-                      <h4 class="h6 text-uppercase mb-2">{{ copy.original_explanation }}</h4>
-                      <p class="mb-0 explanation-text" lang="ru">{{ item.explanation }}</p>
+                    {% endif %}
+                    <section class="explanation-block" aria-label="{{ result.explanation_label }}">
+                      <h4 class="explanation-title">{{ result.explanation_label }}</h4>
+                      <p class="mb-0 explanation-text" lang="{{ result.generation_locale }}">{{ item.explanation }}</p>
                     </section>
-                    <p class="fs-5 mb-0"><span class="text-body-secondary fs-6">{{ copy.price_from }}</span> <strong>{{ item.price }} ₸</strong></p>
-                    <p class="small text-body-secondary mb-0">{{ copy.price_caveat }}</p>
                   </div>
                 </article>
               </div>
             {% endfor %}
           </div>
-
-          {% if result.export_id %}
-            <section class="export-panel border rounded-3 p-3 mt-4" aria-labelledby="export-title">
-              <h3 id="export-title" class="h6 mb-3">{{ copy.export_title }}</h3>
-              <div class="d-flex flex-wrap gap-2">
-                <form method="post" action="{{ url_for('web.export_recommendations', format_name='csv') }}">
-                  <input type="hidden" name="locale" value="{{ locale }}">
-                  <input type="hidden" name="export_id" value="{{ result.export_id }}">
-                  <button class="btn btn-outline-primary" type="submit">{{ copy.download_csv }}</button>
-                </form>
-                <form method="post" action="{{ url_for('web.export_recommendations', format_name='json') }}">
-                  <input type="hidden" name="locale" value="{{ locale }}">
-                  <input type="hidden" name="export_id" value="{{ result.export_id }}">
-                  <button class="btn btn-outline-primary" type="submit">{{ copy.download_json }}</button>
-                </form>
-              </div>
-            </section>
-          {% endif %}
 
           {% if result.comparison %}
             <section class="comparison-panel mt-4" aria-labelledby="comparison-title">
@@ -159,6 +152,26 @@
         {% elif result.kind in ("category_not_found", "no_eligible_candidates", "validation_error", "backend_error", "empty") %}
           <p class="small mb-0">{{ copy.retry_hint }}</p>
         {% endif %}
+        {% if result.export_notice %}<p class="alert alert-warning mt-3" role="status">{{ result.export_notice }}</p>{% endif %}
+          {% if result.export_id %}
+            <section class="export-panel" aria-labelledby="export-title">
+              <h3 id="export-title" class="h6 mb-0">{{ copy.export_title }}</h3>
+              <div class="d-flex flex-wrap gap-2">
+                <form method="post" action="{{ url_for('web.export_recommendations', format_name='csv') }}">
+                  <input type="hidden" name="locale" value="{{ locale }}">
+                  <input type="hidden" name="export_id" value="{{ result.export_id }}">
+                  <button class="btn btn-outline-primary" type="submit">{{ copy.download_csv }}</button>
+                </form>
+                <form method="post" action="{{ url_for('web.export_recommendations', format_name='json') }}">
+                  <input type="hidden" name="locale" value="{{ locale }}">
+                  <input type="hidden" name="export_id" value="{{ result.export_id }}">
+                  <button class="btn btn-outline-primary" type="submit">{{ copy.download_json }}</button>
+                </form>
+              </div>
+            </section>
+          {% endif %}
+
+
       </div>
     </section>
   </div>

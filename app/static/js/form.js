@@ -1,6 +1,16 @@
 (() => {
   const form = document.querySelector('[data-recommendation-form]');
   if (!form) return;
+  // Copy the live draft at submission time; hidden fields contain only the last render.
+  document.querySelectorAll('[data-locale-form]').forEach((localeForm) => {
+    localeForm.addEventListener('submit', () => {
+      new FormData(form).forEach((value, name) => {
+        if (name === 'locale') return;
+        const hidden = localeForm.elements.namedItem(name);
+        if (hidden) hidden.value = value;
+      });
+    });
+  });
   const controls = form.querySelectorAll('input, select');
   const syncValidity = (control) => {
     if (control.checkValidity()) control.removeAttribute('aria-invalid');

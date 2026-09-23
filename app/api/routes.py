@@ -25,12 +25,25 @@ def read_payload():
 @api.post("/recommendations")
 def recommendations():
     payload = read_payload()
-    result = current_app.extensions["recommendation_service"].recommend(payload)
+    try:
+        result = current_app.extensions["recommendation_service"].recommend(payload)
+    except ValidationError:
+        raise
+    except Exception:
+        return (
+            jsonify(
+                {"error": {"code": "INTERNAL_ERROR", "message": text("internal", g.product_locale)}}
+            ),
+            500,
+        )
     response = jsonify(result)
     if request.headers.get("X-Enable-Export") == "true":
-        token = current_app.extensions["export_snapshots"].put(snapshot(payload, result))
-        response.headers["X-Recommendation-Export-Token"] = token
         response.headers["Cache-Control"] = "no-store"
+        try:
+            token = current_app.extensions["export_snapshots"].put(snapshot(payload, result))
+            response.headers["X-Recommendation-Export-Token"] = token
+        except Exception:
+            response.headers["X-Recommendation-Export-Status"] = "unavailable"
     return response
 
 

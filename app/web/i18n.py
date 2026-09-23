@@ -266,6 +266,32 @@ _COPY: dict[str, dict[str, str]] = {
     },
 }
 
+# Labels describe the language of the saved generation, independently of UI locale.
+_COPY["ru"].update(
+    {
+        "explanation_language": "Почему подходит · {language}",
+        "source_message_label": "Сообщение сохранённого результата",
+        "export_unavailable_notice": "Результат показан, но сохранить его для экспорта не удалось. Повторите поиск, чтобы скачать результат.",
+        "snapshot_expired": "Срок хранения результата истёк. Повторите поиск; заполненная форма сохранена.",
+    }
+)
+_COPY["kk"].update(
+    {
+        "explanation_language": "Неліктен сәйкес келеді · {language}",
+        "source_message_label": "Сақталған нәтиженің хабарламасы",
+        "export_unavailable_notice": "Нәтиже көрсетілді, бірақ экспорт үшін сақталмады. Жүктеп алу үшін іздеуді қайталаңыз.",
+        "snapshot_expired": "Нәтижені сақтау мерзімі аяқталды. Іздеуді қайталаңыз; толтырылған нысан сақталды.",
+    }
+)
+_COPY["en"].update(
+    {
+        "explanation_language": "Why this matches · {language}",
+        "source_message_label": "Saved result message",
+        "export_unavailable_notice": "The result is shown, but could not be saved for export. Search again to download it.",
+        "snapshot_expired": "The saved result has expired. Search again; your form values are preserved.",
+    }
+)
+
 _OPTIONS: dict[str, dict[str, dict[str, str]]] = {
     "cities": {
         "ru": {"Алматы": "Алматы", "Астана": "Астана", "Зарубежье": "Зарубежье"},

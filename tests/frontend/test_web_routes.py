@@ -6,12 +6,24 @@ import re
 import pytest
 from flask import Flask
 
+from app.models import ValidationError
 from app.web import web
 from app.web.exports import ExportStore
 
 
 class StubService:
     def __init__(self, result=None, error=None):
+        if isinstance(result, dict) and result.get("status") in {
+            "matched",
+            "category_not_found",
+            "no_eligible_candidates",
+        }:
+            result = {
+                "count": len(result.get("recommendations", [])),
+                "message": "",
+                "recommendations": [],
+                **result,
+            }
         self.result = result
         self.error = error
         self.payload = None
@@ -81,6 +93,7 @@ def test_form_maps_all_fields_to_service():
         "budget_kzt": 1000000,
         "duration_hours": 6.0,
         "language": "казахский",
+        "locale": "ru",
     }
 
 
@@ -137,11 +150,11 @@ def test_empty_matched_response_never_leaves_blank_area():
 
 
 def test_validation_and_backend_errors_are_visible_and_preserve_form():
-    validation = make_client(StubService(error=ValueError("Бюджет некорректен"))).post(
-        "/", data=valid_form()
-    )
+    validation = make_client(
+        StubService(error=ValidationError({"budget_kzt": "Бюджет некорректен"}))
+    ).post("/", data=valid_form())
     assert validation.status_code == 422
-    assert "Бюджет некорректен" in validation.text
+    assert "Проверьте" in validation.text
     assert 'value="1000000"' in validation.text
 
     backend = make_client(StubService(error=RuntimeError("secret backend detail"))).post(
@@ -170,14 +183,14 @@ def test_malformed_number_has_localized_validation_error():
 def test_product_locales_and_html_lang(locale, lang, heading, submit):
     response = make_client(StubService()).get(f"/?locale={locale}")
     assert response.status_code == 200
-    assert f'<html lang="{lang}">' in response.text
+    assert f'<html lang="{lang}" data-bs-theme="light"' in response.text
     assert heading in response.text
     assert submit in response.text
 
 
 def test_unknown_locale_falls_back_to_russian():
     response = make_client(StubService()).get("/?locale=unsupported")
-    assert '<html lang="ru">' in response.text
+    assert '<html lang="ru" data-bs-theme="light"' in response.text
     assert "Получить рекомендации" in response.text
 
 
@@ -195,27 +208,27 @@ def test_locale_switch_keeps_contractor_language_independent():
         },
     )
     assert response.status_code == 200
-    assert '<html lang="en">' in response.text
+    assert '<html lang="en" data-bs-theme="light"' in response.text
     assert '<option value="казахский" selected>Kazakh</option>' in response.text
     assert service.payload["language"] == "казахский"
     assert service.calls == 1
-    assert "locale" not in service.payload
+    assert service.payload["locale"] == "ru"
     assert "switch_locale" not in service.payload
 
 
-def test_non_russian_card_labels_keep_original_explanation_in_russian():
+def test_new_search_labels_explanation_with_generation_locale():
     result = {
         "status": "matched",
         "message": "Найден один подрядчик.",
         "recommendations": [recommendation(synthetic=True, price_imputed=True)],
     }
     response = make_client(StubService(result)).post("/", data={**valid_form(), "locale": "en"})
-    assert "Original explanation (Russian)" in response.text
-    assert 'class="mb-0 explanation-text" lang="ru"' in response.text
+    assert "Why this matches · English" in response.text
+    assert 'class="mb-0 explanation-text" lang="en"' in response.text
     assert "Synthetic profile" in response.text
     assert "Price filled automatically" in response.text
     assert "Price from" in response.text
-    assert "Additional service detail in Russian" in response.text
+    assert "Original explanation (Russian)" not in response.text
 
 
 @pytest.mark.parametrize(
@@ -243,7 +256,7 @@ def _export_id(response):
     return match.group(1)
 
 
-def test_export_controls_only_exist_for_successful_recommendations():
+def test_export_controls_exist_for_successful_and_zero_recommendations():
     matched = make_client(
         StubService({"status": "matched", "recommendations": [recommendation()]})
     ).post("/", data=valid_form())
@@ -255,7 +268,7 @@ def test_export_controls_only_exist_for_successful_recommendations():
         "/", data=valid_form()
     )
     assert "Скачать CSV" not in initial.text
-    assert "Скачать CSV" not in empty.text
+    assert "Скачать CSV" in empty.text
 
 
 def test_json_export_preserves_exact_query_and_visible_candidates():
@@ -271,7 +284,7 @@ def test_json_export_preserves_exact_query_and_visible_candidates():
     assert exported.status_code == 200
     assert exported.content_type == "application/json; charset=utf-8"
     assert exported.headers["Content-Disposition"] == 'attachment; filename="recommendations.json"'
-    assert payload["query"] == {
+    assert payload["request"] == {
         "city": "Астана",
         "event_date": "2026-10-15",
         "event_format": "свадьба",
@@ -280,7 +293,7 @@ def test_json_export_preserves_exact_query_and_visible_candidates():
         "duration_hours": 6.0,
         "language": "казахский",
     }
-    assert [item["id"] for item in payload["recommendations"]] == ["HK-00001", "HK-00002"]
+    assert [item["id"] for item in payload["result"]["recommendations"]] == ["HK-00001", "HK-00002"]
 
 
 def test_csv_export_preserves_query_and_candidates():
@@ -293,7 +306,7 @@ def test_csv_export_preserves_query_and_candidates():
     assert exported.status_code == 200
     assert exported.content_type == "text/csv; charset=utf-8"
     assert exported.headers["Content-Disposition"] == 'attachment; filename="recommendations.csv"'
-    assert rows[0]["query_language"] == "казахский"
+    assert rows[0]["request_language"] == "казахский"
     assert rows[0]["id"] == "HK-00001"
 
 

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import copy
-import csv
-import io
-import json
 from collections.abc import Mapping
 from typing import Any
 
-from flask import Blueprint, Response, current_app, render_template, request
+from flask import Blueprint, Response, current_app, make_response, render_template, request
+
+from app.models import ValidationError
+from app.services.export import csv_bytes, json_bytes
 
 from .exports import ExportSnapshot, ExportStore
 from .i18n import copy_for, locale_options, option_label, option_list, resolve_locale, text
@@ -45,26 +44,6 @@ _REASON_KEYS = {
     "duration_too_long": "reason_duration",
     "language_mismatch": "reason_language",
 }
-_EXPORT_QUERY_FIELDS = (
-    "city",
-    "event_date",
-    "event_format",
-    "category",
-    "budget_kzt",
-    "duration_hours",
-    "language",
-)
-_EXPORT_CARD_FIELDS = (
-    "id",
-    "anon_name",
-    "category",
-    "city",
-    "price_from_kzt",
-    "synthetic",
-    "city_imputed",
-    "price_imputed",
-    "explanation",
-)
 
 
 def _blank_form() -> dict[str, str]:
@@ -86,6 +65,7 @@ def _submitted_form() -> dict[str, str]:
 def _service_payload(form: Mapping[str, str], locale: str) -> dict[str, Any]:
     try:
         payload: dict[str, Any] = {
+            "locale": locale,
             "city": form["city"],
             "event_date": form["event_date"],
             "event_format": form["event_format"],
@@ -93,9 +73,10 @@ def _service_payload(form: Mapping[str, str], locale: str) -> dict[str, Any]:
             "budget_kzt": int(form["budget_kzt"]),
         }
         if form["duration_hours"]:
-            payload["duration_hours"] = float(form["duration_hours"])
+            duration = float(form["duration_hours"])
+            payload["duration_hours"] = int(duration) if duration.is_integer() else duration
     except ValueError:
-        raise ValueError(text(locale, "number_error")) from None
+        raise ValidationError({"number": text(locale, "number_error")}) from None
     if form["language"]:
         payload["language"] = form["language"]
     return payload
@@ -157,7 +138,7 @@ def _comparison(cards: list[dict[str, Any]], locale: str) -> dict[str, Any] | No
     }
 
 
-def _matched_view(result: Mapping[str, Any], locale: str) -> dict[str, Any]:
+def _matched_view(result: Mapping[str, Any], locale: str, generation_locale: str) -> dict[str, Any]:
     raw_source_items = list(result.get("recommendations") or [])
     source_items = [dict(item) for item in raw_source_items[:3] if isinstance(item, Mapping)]
     cards = []
@@ -198,22 +179,33 @@ def _matched_view(result: Mapping[str, Any], locale: str) -> dict[str, Any]:
             if len(raw_source_items) > 3
             else (
                 str(backend_message)
-                if locale == "ru" and backend_message
+                if locale == generation_locale and backend_message
                 else text(locale, "matched_message", count=count)
             )
         ),
-        "source_message": str(backend_message) if locale != "ru" and backend_message else None,
+        "source_message": (
+            str(backend_message) if locale != generation_locale and backend_message else None
+        ),
         "count_note": text(locale, count_key),
         "cards": cards,
         "comparison": _comparison(cards, locale),
-        "_export_recommendations": tuple(source_items),
+        "generation_locale": generation_locale,
+        "explanation_label": text(
+            locale,
+            "explanation_language",
+            language=option_label(
+                locale,
+                "languages",
+                {"ru": "русский", "kk": "казахский", "en": "английский"}[generation_locale],
+            ),
+        ),
     }
 
 
 def _result_view(result: Mapping[str, Any], locale: str, form: Mapping[str, str]) -> dict[str, Any]:
     status = str(result.get("status", "")).lower()
     if status == "matched":
-        return _matched_view(result, locale)
+        return _matched_view(result, locale, resolve_locale(form.get("locale")))
     if status == "category_not_found":
         return {
             "kind": "category_not_found",
@@ -276,13 +268,13 @@ def _view_from_snapshot(
         return _error_view(locale, snapshot.state_kind)
     if snapshot.result is None:
         return _idle_view(locale)
-    return _result_view(snapshot.result, locale, form)
+    return _result_view(snapshot.result, locale, snapshot.query)
 
 
 def _render_index(
     *, form: Mapping[str, str], result_view: Mapping[str, Any], locale: str, status: int = 200
 ):
-    return (
+    response = make_response(
         render_template(
             "index.html",
             form=form,
@@ -297,6 +289,22 @@ def _render_index(
         ),
         status,
     )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _capture(result_view, item, locale):
+    try:
+        view_id = _export_store().put(item)
+        result_view["view_id"] = view_id
+        if item.result is not None and result_view["kind"] in {
+            "matched",
+            "category_not_found",
+            "no_eligible_candidates",
+        }:
+            result_view["export_id"] = view_id
+    except Exception:
+        result_view["export_notice"] = text(locale, "export_unavailable_notice")
 
 
 @web.route("/", methods=["GET", "POST"])
@@ -310,105 +318,77 @@ def index():
         form = _submitted_form()
         if request.form.get("switch_locale"):
             view_id = request.form.get("view_id", "")
-            snapshot = _export_store().get(view_id) if view_id else None
-            result_view = (
-                _view_from_snapshot(snapshot, locale, form) if snapshot else _idle_view(locale)
-            )
-            if snapshot:
-                result_view.pop("_export_recommendations", None)
+            try:
+                saved = _export_store().get(view_id) if view_id else None
+            except Exception:
+                saved = None
+            if saved:
+                result_view = _view_from_snapshot(saved, locale, form)
                 result_view["view_id"] = view_id
-                if result_view.get("kind") == "matched":
+                if saved.document and result_view["kind"] in {
+                    "matched",
+                    "category_not_found",
+                    "no_eligible_candidates",
+                }:
                     result_view["export_id"] = view_id
+            elif view_id:
+                result_view = {
+                    "kind": "snapshot_expired",
+                    "title": text(locale, "export_expired_title"),
+                    "message": text(locale, "snapshot_expired"),
+                }
         else:
             try:
                 payload = _service_payload(form, locale)
                 result = _get_service().recommend(payload)
                 if not isinstance(result, Mapping):
                     raise TypeError("Recommendation service returned a non-mapping result")
-                result_view = _result_view(result, locale, form)
-                result_view.pop("_export_recommendations", None)
-                view_id = _export_store().put(
-                    ExportSnapshot(dict(payload), copy.deepcopy(dict(result)))
-                )
-                result_view["view_id"] = view_id
-                if result_view.get("kind") == "matched":
-                    result_view["export_id"] = view_id
-            except (ValueError, TypeError) as exc:
-                result_view = _error_view(locale, "validation_error", str(exc))
-                result_view["view_id"] = _export_store().put(
-                    ExportSnapshot({}, None, "validation_error")
-                )
+                result_view = _result_view(result, locale, payload)
+            except ValidationError as exc:
+                message = text(locale, "number_error") if "number" in exc.details else None
+                result_view = _error_view(locale, "validation_error", message)
+                _capture(result_view, ExportSnapshot({}, None, "validation_error"), locale)
                 response_status = 422
             except Exception:
-                current_app.logger.exception("Web recommendation request failed")
                 result_view = _error_view(locale, "backend_error")
-                result_view["view_id"] = _export_store().put(
-                    ExportSnapshot({}, None, "backend_error")
-                )
+                _capture(result_view, ExportSnapshot({}, None, "backend_error"), locale)
                 response_status = 503
+            else:
+                _capture(result_view, ExportSnapshot(dict(payload), dict(result)), locale)
 
     return _render_index(form=form, result_view=result_view, locale=locale, status=response_status)
-
-
-def _safe_csv_cell(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    cell = str(value)
-    if cell.startswith(("=", "+", "-", "@", "\t", "\r")):
-        return f"'{cell}"
-    return cell
 
 
 @web.post("/recommendations/export/<format_name>")
 def export_recommendations(format_name: str):
     locale = resolve_locale(request.form.get("locale"))
-    snapshot = _export_store().get(request.form.get("export_id", ""))
-    if snapshot is None or format_name not in {"csv", "json"}:
-        return (
-            render_template(
-                "export_error.html",
-                locale=locale,
-                locale_options=locale_options(locale),
-                copy=copy_for(locale),
-                form=None,
-            ),
-            404,
-        )
-
-    payload = {
-        "query": snapshot.query,
-        "count": len(snapshot.recommendations),
-        "recommendations": list(snapshot.recommendations),
-    }
-    if format_name == "json":
-        response = Response(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            content_type="application/json; charset=utf-8",
-        )
-        filename = "recommendations.json"
-    else:
-        output = io.StringIO(newline="")
-        fieldnames = [f"query_{field}" for field in _EXPORT_QUERY_FIELDS] + list(
-            _EXPORT_CARD_FIELDS
-        )
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
-        writer.writeheader()
-        for card in snapshot.recommendations:
-            writer.writerow(
-                {
-                    **{
-                        f"query_{field}": _safe_csv_cell(snapshot.query.get(field))
-                        for field in _EXPORT_QUERY_FIELDS
-                    },
-                    **{field: _safe_csv_cell(card.get(field)) for field in _EXPORT_CARD_FIELDS},
-                }
+    try:
+        saved = _export_store().get(request.form.get("export_id", ""))
+        if saved is None or saved.document is None or format_name not in {"csv", "json"}:
+            status = 404
+        else:
+            data = csv_bytes(saved.document) if format_name == "csv" else json_bytes(saved.document)
+            response = Response(
+                data,
+                content_type=f"{'text/csv' if format_name == 'csv' else 'application/json'}; charset=utf-8",
             )
-        response = Response("\ufeff" + output.getvalue(), content_type="text/csv; charset=utf-8")
-        filename = "recommendations.csv"
-
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+            response.headers["Content-Disposition"] = (
+                f'attachment; filename="recommendations.{format_name}"'
+            )
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            return response
+    except Exception:
+        status = 503
+    response = make_response(
+        render_template(
+            "export_error.html",
+            locale=locale,
+            locale_options=locale_options(locale),
+            copy=copy_for(locale),
+            form=None,
+        ),
+        status,
+    )
     response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Content-Type-Options"] = "nosniff"
     return response

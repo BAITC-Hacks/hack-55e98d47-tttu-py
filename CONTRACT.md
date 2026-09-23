@@ -1061,3 +1061,45 @@ by building a temporary database and atomically replacing the staging file. Acti
 CSV/SQLite paths cannot be selected as staging destinations. Failure preserves the
 previous staging snapshot. No automatic activation, public upload, or change to
 startup seeding is included; the running recommendation catalog remains unchanged.
+
+## 23.4 Integrated Web locale, snapshots and comparison
+
+The HTML form supports ru / kk / en and passes its locale to the same
+RecommendationService used by the API. Product text and code-authored explanation
+framing use that locale; source evidence and canonical catalog data values are not translated.
+Localized display labels for categories, cities and form options do not change the
+underlying query, result DTO or exported values.
+The contractor communication language remains an independent filter.
+
+Switching interface locale preserves the current draft form and the previously
+generated result without another recommendation or AI call. Existing explanations
+remain in their generation locale, identified by an explicit language label and
+correct HTML lang; submitting a new search generates explanations in the new locale.
+Draft edits do not retroactively change the saved result or its export. Result messages
+must refer to the saved query rather than any unsent draft. An expired snapshot produces
+a localized expiry notice, not a silent empty result. With JavaScript disabled only
+the last server-submitted form values can be preserved during locale switching.
+
+Web POST /recommendations/export/<csv|json> accepts export_id in the request body.
+It uses the same versioned document and serializers as section 23.2, including UTC
+generation timestamp, generation locale, normalized request and unchanged result.
+This replaces the earlier frontend-only query/count/recommendations download shape;
+the recommendation API response remains backward compatible. Downloads never rerun
+recommendations. Both successful and zero-result snapshots can be exported.
+Web snapshots also expire after 15 minutes, hold at most 128 entries and at most
+256 KiB per entry. HTML containing tokens is no-store; tokens are never put in URLs.
+
+Snapshot capture is optional: a size-limit or storage failure must not turn a valid
+recommendation into an error. API capture failure omits the token and returns
+X-Recommendation-Export-Status: unavailable without changing the successful body.
+Web capture failure retains the result and shows a localized export-unavailable notice.
+Internal failures use generic messages; exception content, paths and credentials must
+not be rendered or logged by recommendation/export handlers.
+
+Comparison appears only for 2–3 returned cards, in their existing order. It uses only
+the current public card fields (ID, category, city, price from and synthetic/imputed
+flags), does not infer missing attributes or announce a winner, and never replaces
+the explanations. Mobile tables scroll within their own container.
+
+The integrated UI uses a light-only theme, including under a dark system preference.
+Responsive visual styling does not change recommendation semantics or fabricate demo results.
