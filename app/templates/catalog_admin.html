@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ admin_copy.page_title }}{% endblock %}
+{% block content %}
+  <div class="workspace admin-workspace" data-admin-state="{{ state }}">
+    <section class="search-section" aria-labelledby="admin-title">
+      <div class="hero">
+        <p class="eyebrow">{{ admin_copy.nav }}</p>
+        <h1 id="admin-title" class="hero-title">{{ admin_copy.title }}</h1>
+        <p class="hero-description">{{ admin_copy.intro }}</p>
+      </div>
+
+      {% if authenticated %}
+        <form method="post" action="{{ url_for('catalog_admin.logout') }}" class="d-flex justify-content-end mb-3" data-admin-submit>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="locale" value="{{ locale }}">
+          <button class="btn btn-outline-secondary btn-sm" type="submit">{{ admin_copy.logout }}</button>
+        </form>
+      {% endif %}
+
+      {% if error %}
+        <div class="alert alert-danger" role="alert" tabindex="-1">{{ error }}</div>
+      {% endif %}
+
+      {% if state == "disabled" %}
+        <section class="result-shell admin-panel" aria-labelledby="admin-disabled-title">
+          <h2 id="admin-disabled-title" class="result-title">{{ admin_copy.disabled }}</h2>
+        </section>
+
+      {% elif state == "login" %}
+        <section class="search-card admin-login" aria-labelledby="login-title">
+          <div class="search-card-body">
+            <h2 id="login-title" class="h3 mb-4">{{ admin_copy.login_title }}</h2>
+            <form method="post" action="{{ url_for('catalog_admin.login', locale=locale) }}" data-admin-submit>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="locale" value="{{ locale }}">
+              <div class="form-field mb-3">
+                <label class="form-label" for="admin-password">{{ admin_copy.password }}</label>
+                <input class="form-control" id="admin-password" name="password" maxlength="256" type="password" autocomplete="current-password" required autofocus aria-describedby="admin-password-help">
+                <div class="form-text" id="admin-password-help">{{ admin_copy.login_title }}</div>
+              </div>
+              <button class="btn btn-primary" type="submit" data-admin-submit-button>
+                <span data-admin-submit-label>{{ admin_copy.login }}</span>
+                <span class="spinner-border spinner-border-sm d-none" aria-hidden="true" data-admin-spinner></span>
+              </button>
+            </form>
+          </div>
+        </section>
+
+      {% elif state == "preview" and preview %}
+        <section class="result-shell admin-panel" aria-labelledby="preview-title" aria-live="polite">
+          <div class="result-heading">
+            <div class="state-mark" aria-hidden="true"></div>
+            <div>
+              <h2 id="preview-title" class="result-title">{{ admin_copy.preview_title }}</h2>
+              <p class="text-body-secondary mb-0">{{ admin_copy.replacement }}</p>
+            </div>
+          </div>
+
+          <dl class="row row-cols-1 row-cols-sm-2 row-cols-lg-4 g-3 mt-1">
+            <div class="col"><div class="card h-100"><div class="card-body"><dt class="text-body-secondary small">{{ admin_copy.count }}</dt><dd class="h3 mb-0">{{ preview.count }}</dd></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body"><dt class="text-body-secondary small">{{ admin_copy.cities }}</dt><dd class="mb-0">{% for city, count in preview.cities.items() %}<span class="d-block">{{ city }} <strong>{{ count }}</strong></span>{% endfor %}</dd></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body"><dt class="text-body-secondary small">{{ admin_copy.categories }}</dt><dd class="mb-0">{% for category, count in preview.categories.items() %}<span class="d-block text-truncate">{{ category }} <strong>{{ count }}</strong></span>{% endfor %}</dd></div></div></div>
+            <div class="col"><div class="card h-100"><div class="card-body"><dt class="text-body-secondary small">{{ admin_copy.checksum }}</dt><dd class="mb-0 text-break small font-monospace">{{ preview.sha256 }}</dd></div></div></div>
+          </dl>
+
+          <section class="mt-4" aria-labelledby="sample-title">
+            <h3 id="sample-title" class="h4">{{ admin_copy.sample }}</h3>
+            <div class="table-responsive admin-preview-table" tabindex="0" role="region" aria-label="{{ admin_copy.sample }}">
+              <table class="table table-bordered align-middle mb-0">
+                <thead class="table-light"><tr><th scope="col">{{ admin_copy.id }}</th><th scope="col">{{ admin_copy.name }}</th><th scope="col">{{ admin_copy.city }}</th><th scope="col">{{ admin_copy.category }}</th><th scope="col">{{ admin_copy.price }}</th><th scope="col">{{ admin_copy.flags }}</th></tr></thead>
+                <tbody>
+                  {% for item in preview.sample[:5] %}
+                    <tr><th scope="row">{{ item.id }}</th><td class="text-truncate" style="max-width:14rem">{{ item.anon_name }}</td><td>{{ item.city }}</td><td class="text-truncate" style="max-width:14rem">{{ item.categories|join(', ') }}</td><td>{{ item.price_from_kzt }} ₸</td><td>{% if item.synthetic %}<span class="badge text-bg-warning">{{ admin_copy.synthetic }}</span>{% endif %}{% if item.city_imputed or item.price_imputed %}<span class="badge text-bg-secondary">{{ admin_copy.imputed }}</span>{% endif %}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="alert alert-warning mt-4" role="note">{{ admin_copy.replacement }}</div>
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <form method="post" action="{{ url_for('catalog_admin.activate') }}" data-admin-submit>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="locale" value="{{ locale }}">
+              <input type="hidden" name="preview_id" value="{{ preview.preview_id }}">
+              <button class="btn btn-primary" type="submit" data-admin-submit-button><span data-admin-submit-label>{{ admin_copy.apply }}</span><span class="spinner-border spinner-border-sm d-none" aria-hidden="true" data-admin-spinner></span></button>
+            </form>
+            <form method="post" action="{{ url_for('catalog_admin.cancel') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="locale" value="{{ locale }}">
+              <button class="btn btn-outline-secondary" type="submit">{{ admin_copy.cancel }}</button>
+            </form>
+          </div>
+        </section>
+
+      {% elif state == "success" %}
+        <section class="result-shell admin-panel" aria-labelledby="success-title" aria-live="polite">
+          <h2 id="success-title" class="result-title">{{ admin_copy.success }}</h2>
+          {% if current_catalog %}<p class="text-body-secondary">{{ admin_copy.count }}: {{ current_catalog.count }} · {{ admin_copy.checksum }}: <span class="font-monospace text-break">{{ current_catalog.sha256 }}</span></p>{% endif %}
+          <a class="btn btn-primary" href="{{ url_for('catalog_admin.index', locale=locale) }}">{{ admin_copy.back }}</a>
+        </section>
+
+      {% else %}
+        <section class="search-card" aria-labelledby="upload-title">
+          <div class="search-card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+              <div><h2 id="upload-title" class="h3 mb-2">{{ admin_copy.upload_title }}</h2><p class="text-body-secondary">{{ admin_copy.catalog_format_note }}</p></div>
+              <a class="btn btn-outline-secondary" href="{{ url_for('catalog_admin.sample', locale=locale) }}">{{ admin_copy.download_sample }}</a>
+            </div>
+            <form method="post" action="{{ url_for('catalog_admin.upload', locale=locale) }}" enctype="multipart/form-data" data-admin-submit>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="locale" value="{{ locale }}">
+              <div class="form-field mb-3 upload-dropzone">
+                <label class="form-label" for="catalog-file">{{ admin_copy.file }}</label>
+                <input class="form-control" id="catalog-file" name="catalog_file" type="file" accept=".csv,text/csv" required aria-describedby="catalog-file-help catalog-file-error">
+                <p id="catalog-file-error" class="text-danger small mt-2" role="alert" hidden data-file-error data-size-error="{{ admin_copy.error_size }}" data-type-error="{{ admin_copy.error_file }}"></p>
+                <div class="form-text" id="catalog-file-help">{{ admin_copy.requirements }}</div>
+              </div>
+              <button class="btn btn-primary" type="submit" data-admin-submit-button><span data-admin-submit-label>{{ admin_copy.upload }}</span><span class="spinner-border spinner-border-sm d-none" aria-hidden="true" data-admin-spinner></span></button>
+            </form>
+          </div>
+        </section>
+        {% if current_catalog %}<p class="small text-body-secondary mt-3">{{ admin_copy.count }}: {{ current_catalog.count }} · {{ admin_copy.checksum }}: <span class="font-monospace text-break">{{ current_catalog.sha256 }}</span></p>{% endif %}
+      {% endif %}
+    </section>
+  </div>
+
+{% endblock %}

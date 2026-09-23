@@ -1,6 +1,8 @@
 import csv
+import io
 import json
 import sqlite3
+from contextlib import closing
 from dataclasses import asdict, fields
 from datetime import date
 from pathlib import Path
@@ -13,12 +15,30 @@ class DatasetError(ValueError):
 
 
 def load_csv(path: str | Path) -> tuple[Contractor, ...]:
+    try:
+        return _read_csv(Path(path).open(encoding="utf-8-sig", newline=""))
+    except OSError:
+        raise DatasetError("Unable to read contractor dataset.") from None
+
+
+def load_csv_bytes(data: bytes) -> tuple[Contractor, ...]:
+    """Same schema/model parser used by startup and local administrative staging."""
+    try:
+        decoded = data.decode("utf-8-sig", errors="strict")
+    except UnicodeError:
+        raise DatasetError("Catalog must be UTF-8.") from None
+    if "\x00" in decoded or "\ufeff" in decoded:
+        raise DatasetError("Invalid catalog encoding or control data.")
+    return _read_csv(io.StringIO(decoded, newline=""))
+
+
+def _read_csv(source) -> tuple[Contractor, ...]:
     required = {field.name for field in fields(Contractor)}
     result = []
     seen = set()
     try:
-        with Path(path).open(encoding="utf-8-sig", newline="") as source:
-            reader = csv.DictReader(source)
+        with source:
+            reader = csv.DictReader(source, strict=True)
             if not reader.fieldnames or set(reader.fieldnames) != required:
                 raise DatasetError("CSV columns do not match the contractor schema.")
             if len(reader.fieldnames) != len(required):
@@ -84,7 +104,7 @@ class CatalogRepository:
 
     def initialize(self, contractors: tuple[Contractor, ...]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS contractors ("
@@ -122,7 +142,7 @@ class CatalogRepository:
         return Contractor(**values)
 
     def discover(self, city: str, category: str) -> tuple[Contractor, ...]:
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             rows = connection.execute(
                 "SELECT c.payload FROM contractors c JOIN categories k ON c.id = k.contractor_id "
                 "WHERE c.city = ? AND k.category = ? ORDER BY c.id ASC",
@@ -131,6 +151,6 @@ class CatalogRepository:
         return tuple(self._decode(row[0]) for row in rows)
 
     def all(self) -> tuple[Contractor, ...]:
-        with sqlite3.connect(self.path) as connection:
+        with closing(sqlite3.connect(self.path)) as connection, connection:
             rows = connection.execute("SELECT payload FROM contractors ORDER BY id ASC").fetchall()
         return tuple(self._decode(row[0]) for row in rows)

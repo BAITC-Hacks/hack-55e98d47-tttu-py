@@ -12,3 +12,13 @@ instance/
 *.sqlite*
 .coverage
 htmlcov/
+.coverage.*
+*.log
+*.db
+*.db-journal
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.pytest-*-temp/
+exports/

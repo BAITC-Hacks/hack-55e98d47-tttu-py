@@ -14,11 +14,8 @@
 3. Тесты, реализующие контракт.
 4. Реализация.
 
-`feature/jonas` владеет контрактом.
-
-`backend/ksusha` реализует backend согласно контракту.
-
-`frontend/denis` реализует UI согласно контракту.
+`README.md` — основной вход для пользователя и проверяющего; этот контракт
+фиксирует поведение, а код и тесты подтверждают его реализацию.
 
 Любое изменение поведения, API, DTO, фильтрации, ranking или результата сначала отражается здесь.
 
@@ -289,14 +286,11 @@ LLM запрещено самостоятельно решать:
 
 AI получает только уже проверенных кандидатов и структурированные evidence.
 
-AI может:
-
-* анализировать смысл `description`;
-* выделять конкретные особенности;
-* формулировать 1–2 предложения объяснения;
-* объяснять различия между подходящими кандидатами.
-
-AI не может придумывать отсутствующие факты.
+AI выбирает `reason_id` из переданных фрагментов `description` для каждого
+уже отобранного кандидата. Python проверяет candidate/reason IDs и собирает
+1–2 предложения из структурированных фактов и исходной цитаты. Свободная
+генерация текста, изменение фактов, eligibility и порядка не допускаются.
+Невалидный ответ целиком заменяется deterministic fallback.
 
 ## 6.3 Deterministic Requirement
 
@@ -406,18 +400,20 @@ Pipeline сохраняет причины исключения кандидат
 
 Ranking должен быть прозрачным и deterministic.
 
-Начальная стратегия:
+Реализованная стратегия (`app/services/ranking.py`):
 
 ```text
-format match       mandatory
-budget fit         scoring signal
-language match     scoring signal when requested
-duration fit       scoring signal when requested
-description match  semantic scoring signal
-stable tie-break   mandatory
+score = 35 * budget + 45 * description + 10 * language + 10 * duration
+order = score DESC, id ASC
 ```
 
 Hard constraints нельзя компенсировать высоким semantic score.
+
+`budget` = price_from_kzt / budget_kzt (при нулевом бюджете — 1 для прошедшей
+фильтр нулевой цены). `description` — среднее долей совпадений основ слов формата
+и категории, диапазон [0, 1]. `language` = 1 при явно запрошенном совпадающем
+языке, иначе 0. `duration` = requested_hours / max_hours; для max_hours=null — 1,
+если длительность не запрошена — 0. Вычисления используют Fraction.
 
 Например:
 
@@ -474,7 +470,7 @@ LLM получает evidence, а не весь каталог.
 
 Explanation:
 
-* русский язык;
+* русский язык по умолчанию; locale=kk/en меняет framing согласно §23;
 * 1–2 предложения;
 * конкретное;
 * основано только на evidence;
@@ -559,8 +555,8 @@ Success:
 ```json
 {
   "status": "matched",
-  "count": 2,
-  "message": "Найдено 2 подходящих подрядчика.",
+  "count": 1,
+  "message": "Найдено подходящих подрядчиков: 1. Показаны все подрядчики города и категории, прошедшие условия заказа; их меньше трёх.",
   "recommendations": [
     {
       "id": "HK-00000",
@@ -695,7 +691,8 @@ Synthetic / imputed indicators when applicable
 │   ├── templates/
 │   │   ├── base.html
 │   │   ├── index.html
-│   │   └── components/
+│   │   ├── catalog_admin.html
+│   │   └── export_error.html
 │   │
 │   └── static/
 │       ├── css/
@@ -708,98 +705,25 @@ Synthetic / imputed indicators when applicable
     ├── conftest.py
     ├── unit/
     ├── integration/
-    └── e2e/
+    └── frontend/
 ```
 
 ---
 
-# 16. Ownership
+# 16. Module boundaries
 
-## backend/ksusha
-
-Owns:
-
-```text
-app/models/**
-app/repositories/**
-app/services/**
-app/ai/**
-app/api/**
-backend unit tests
-```
-
-## frontend/denis
-
-Owns:
-
-```text
-app/web/**
-app/templates/**
-app/static/**
-frontend tests
-```
-
-## feature/jonas
-
-Owns:
-
-```text
-CONTRACT.md
-integration tests
-E2E tests
-regression tests
-cross-branch integration
-README verification
-```
+`models` validates DTOs; `repositories` validates and persists catalog data;
+`services` owns filtering, ranking, evidence, export and catalog activation.
+`api` and `web` adapt transport only. Templates and static files render the UI.
 
 ---
 
-# 17. Agent Orchestration
+# 17. Release verification
 
-Все три lead agents работают как:
-
-**Astra Sol**
-
-Sub-agents:
-
-**Luna 5.4 Medium**
-
-Для substantial task Astra обязан:
-
-1. проверить доступные skills;
-2. использовать подходящие skills;
-3. разбить задачу на независимые исследования;
-4. делегировать узкие задачи Luna;
-5. выполнять независимые исследования параллельно;
-6. сравнить результаты;
-7. самостоятельно принять архитектурное решение;
-8. реализовать решение;
-9. отправить реализацию свежим Luna на review;
-10. выполнить тесты;
-11. исправить подтверждённые проблемы;
-12. повторить verification.
-
-Luna используется для:
-
-* repository reconnaissance;
-* requirement extraction;
-* dataset analysis;
-* edge-case discovery;
-* focused implementation research;
-* test generation;
-* code review;
-* contract comparison;
-* adversarial QA;
-* regression analysis.
-
-Astra отвечает за:
-
-* architecture;
-* trade-offs;
-* final decisions;
-* implementation strategy;
-* cross-cutting decisions;
-* final verification.
+Every behavioral correction requires a focused regression check. Final release
+verification runs the complete pytest suite, Ruff, Black, live demo scenarios,
+and production startup against the same repository state. README and the current
+verification report record only executed checks; historical results are not reused.
 
 ---
 
@@ -948,3 +872,202 @@ EXPLAIN WITH EVIDENCE.
 USE AI WHERE AI ADDS VALUE.
 NEVER LET AI OVERRIDE FACTS.
 ```
+
+---
+
+# 23. Backend product extensions
+
+These additive extensions preserve the integrated recommendation pipeline and the
+legacy response schema. Sections below refine the default Russian explanation rule
+only when the caller explicitly selects another product locale.
+
+## 23.1 Locale and contractor communication language
+
+Recommendation payloads may contain `locale`: `ru` (default), `kk`, or `en`.
+It controls server-authored messages and explanation framing only. Catalog values
+and quoted original description evidence remain unchanged; quotes are labelled as
+original text in kk/en. No unverified translation of evidence is performed.
+
+`communication_language` is an optional alias of existing `language`. Both express
+the required contractor language in catalog vocabulary. If both keys are supplied,
+their trimmed values must agree (including null), otherwise HTTP 422. Locale is
+never inferred from contractor language, nor is contractor language inferred from
+locale. Locale is excluded from the ranking request and from AI evidence.
+
+Default ru preserves existing messages, availability diagnostics, filtering,
+ranking, order, and response fields. Unsupported locales produce HTTP 422.
+Machine status/error/reason codes are not translated. Backend locale support does
+not imply translation of the existing HTML templates.
+
+## 23.2 Recommendation export
+
+`POST /api/v1/recommendations/export` accepts exactly one of:
+
+```json
+{"format":"json","request":{"city":"Астана","event_date":"2026-10-15","event_format":"свадьба","category":"Ведущий","budget_kzt":1000000,"locale":"ru"}}
+```
+
+```json
+{"format":"csv","export_token":"opaque-token-from-response-header"}
+```
+
+`format` is required and is `csv` or `json`. Request mode invokes the SAME
+RecommendationService once and exports the result generated now; it is not a
+promise to reproduce an earlier AI explanation. Token mode exports exactly the
+previous snapshot without rerunning the service or AI, including its timestamp.
+
+To capture a snapshot, normal `POST /api/v1/recommendations` may carry
+`X-Enable-Export: true`. The response body stays unchanged; the response header
+`X-Recommendation-Export-Token` carries an opaque bearer capability. Tokens expire
+after 15 minutes, are never placed in URLs, and are held in a bounded per-process
+store of 128 entries (oldest entries may be evicted). Restart or another worker
+may make a token unavailable; this foundation targets one application process.
+Absent/expired tokens return HTTP 404 with `EXPORT_NOT_FOUND`. Invalid export
+inputs return the existing HTTP 422 validation envelope. Internal export failures
+return a generic HTTP 500 error without paths or exception details.
+
+Downloads use fixed filenames `recommendations.csv` / `recommendations.json`,
+`Content-Disposition: attachment`, `Cache-Control: no-store` and `nosniff`.
+
+JSON export is UTF-8 with this versioned structure and field order:
+
+```json
+{
+  "schema_version": "recommendation-export.v1",
+  "generated_at": "2026-09-23T09:00:00.000000Z",
+  "locale": "ru",
+  "request": {
+    "city": "Астана", "event_date": "2026-10-15", "event_format": "свадьба",
+    "category": "Ведущий", "budget_kzt": 1000000,
+    "duration_hours": null, "language": null
+  },
+  "result": {"status":"matched","count":1,"message":"...","recommendations":[]}
+}
+```
+
+The result contains the actual recommendation response, including cards and
+`reasons` when applicable; the sketch above abbreviates the cards. Request fields
+are normalized and allowlisted; `communication_language` is exported as `language`.
+Unknown input fields, configuration, credentials, full catalog data and internal
+evidence objects are never serialized. Timestamp is generation completion time in UTC.
+
+CSV uses UTF-8 BOM, standard CSV quoting, CRLF row endings and this fixed column order:
+
+```text
+schema_version,generated_at,locale,request_city,request_event_date,request_event_format,request_category,request_budget_kzt,request_duration_hours,request_language,status,count,message,reasons,id,anon_name,category,city,price_from_kzt,synthetic,city_imputed,price_imputed,explanation
+```
+
+Metadata repeats on each candidate row. Zero-result responses contain one metadata
+row with empty contractor columns. Reasons are a JSON object with sorted keys;
+booleans are `true`/`false`, null values are empty cells. All text cells are protected
+against spreadsheet formula injection, including leading whitespace/control-character
+bypasses. CSV safety escaping may prefix a text cell with an apostrophe; JSON retains
+the original text. No generated export is written to a public filesystem path.
+
+## 23.3 Catalog administration foundation
+
+The CLI foundation has no public upload endpoint. The authenticated browser extension
+is defined in section 23.5. Local Flask CLI commands
+`catalog-admin validate FILE` and `catalog-admin stage FILE` require explicit
+runtime `CATALOG_ADMIN_ENABLED=1` and trusted OS access. This is an operator boundary,
+not a replacement for authentication in any future HTTP administration interface.
+Invoke with `flask --app app.admin:create_admin_app catalog-admin ...`; this dedicated
+CLI factory never initializes or reseeds the active catalog and has no HTTP routes.
+
+Both commands accept only regular non-symlink files, read at most 1 MiB plus one
+limit-check byte, require strict UTF-8 or UTF-8 BOM, reject NUL and malformed CSV,
+and reuse the existing complete catalog schema/model validation. Empty catalogs,
+duplicates and invalid fields fail closed. Success output contains counts only;
+failures do not echo content, paths, secrets or internal exceptions.
+
+`validate` makes no catalog changes. `stage` creates a separate SQLite snapshot at
+the operator-configured `CATALOG_STAGING_PATH` (default `instance/catalog-staged.sqlite3`)
+by building a temporary database and atomically replacing the staging file. Active
+CSV/SQLite paths cannot be selected as staging destinations. Failure preserves the
+previous staging snapshot. These CLI commands do not activate data or change
+startup seeding; the running recommendation catalog remains unchanged.
+Authenticated browser activation is specified separately in section 23.5.
+
+## 23.4 Integrated Web locale, snapshots and comparison
+
+The HTML form supports ru / kk / en and passes its locale to the same
+RecommendationService used by the API. Product text and code-authored explanation
+framing use that locale; source evidence and canonical catalog data values are not translated.
+Localized display labels for categories, cities and form options do not change the
+underlying query, result DTO or exported values.
+The contractor communication language remains an independent filter.
+
+Switching interface locale preserves the current draft form and the previously
+generated result without another recommendation or AI call. Existing explanations
+remain in their generation locale, identified by an explicit language label and
+correct HTML lang; submitting a new search generates explanations in the new locale.
+Draft edits do not retroactively change the saved result or its export. Result messages
+must refer to the saved query rather than any unsent draft. An expired snapshot produces
+a localized expiry notice, not a silent empty result. With JavaScript disabled only
+the last server-submitted form values can be preserved during locale switching.
+
+Web POST /recommendations/export/<csv|json> accepts export_id in the request body.
+It uses the same versioned document and serializers as section 23.2, including UTC
+generation timestamp, generation locale, normalized request and unchanged result.
+This replaces the earlier frontend-only query/count/recommendations download shape;
+the recommendation API response remains backward compatible. Downloads never rerun
+recommendations. Both successful and zero-result snapshots can be exported.
+Web snapshots also expire after 15 minutes, hold at most 128 entries and at most
+256 KiB per entry. HTML containing tokens is no-store; tokens are never put in URLs.
+
+Snapshot capture is optional: a size-limit or storage failure must not turn a valid
+recommendation into an error. API capture failure omits the token and returns
+X-Recommendation-Export-Status: unavailable without changing the successful body.
+Web capture failure retains the result and shows a localized export-unavailable notice.
+Internal failures use generic messages; exception content, paths and credentials must
+not be rendered or logged by recommendation/export handlers.
+
+Comparison appears only for 2–3 returned cards, in their existing order. It uses only
+the current public card fields (ID, category, city, price from and synthetic/imputed
+flags), does not infer missing attributes or announce a winner, and never replaces
+the explanations. Mobile tables scroll within their own container.
+
+The integrated UI uses a light-only theme, including under a dark system preference.
+Responsive visual styling does not change recommendation semantics or fabricate demo results.
+
+## 23.5 Authenticated browser catalog upload
+
+The light-only Web UI links to `/admin/catalog`. Public users can view the login
+screen, but cannot upload, preview or activate a catalog without administrator
+authentication. This is a single-operator administrative role, separate from the
+public recommendation flow. Configuration requires an explicit local setup command
+or runtime password hash and session secret; no default password is supplied.
+Password hashes use Werkzeug's password hashing; raw passwords are never persisted.
+Authentication expires after 30 minutes and is invalidated when credentials change.
+Login attempts are bounded; session cookies are HttpOnly and SameSite=Strict.
+Use HTTPS and secure cookies when deployed beyond localhost.
+
+All administrative POSTs, including login, require a session-bound CSRF token.
+Upload accepts one `.csv` file of at most 1 MiB, strict UTF-8 or UTF-8 BOM,
+and reuses the existing complete catalog schema and row validation. Browser imports
+are additionally limited to 1000 profiles, 120-character IDs/names, 6000-character
+descriptions, 32 items per service list and 366 busy dates per profile. Categories,
+formats and communication languages must occur in the original dataset vocabulary. Original
+client filenames never determine server filesystem paths. Invalid input changes
+neither the active catalog nor the original dataset.
+
+Upload first creates a bounded 15-minute, session-owned preview with SHA-256,
+profile/city/category counts and a sample of at most five factual profiles.
+Only a separate explicit POST applies that preview. Expired, foreign-session and
+stale previews cannot activate data. Applying a catalog replaces the complete
+active catalog; it is not an append operation. The page explains this before apply.
+Activations are serialized within the supported single-process deployment.
+
+An applied catalog is stored as a separate configured active CSV under `instance`,
+and loaded on later application startup. The original DATASET_PATH remains
+untouched. A new SQLite snapshot is built with the existing transactional initialization
+before publishing the active CSV. The locked repository facade switches to it only
+after atomic CSV publication; pre-publication failures preserve previous data. New Web and API requests use the same
+updated repository and recommendation pipeline. Existing recommendation/export
+snapshots continue to describe their original generated result until expiry.
+
+The browser interface is fully localized for ru/kk/en, including login, upload,
+validation, preview, success and error states. It explicitly distinguishes an
+input catalog CSV from a recommendation-export CSV. Native file-picker text is
+controlled by the browser. No public catalog mutation API, multi-user account
+management, distributed activation, or historical rollback UI is introduced.
