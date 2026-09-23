@@ -7,6 +7,18 @@ from app.services.filters import REASONS, violations
 from app.services.ranking import rank
 
 
+def _contractor_count_label(count: int) -> str:
+    remainder = count % 100
+    if 11 <= remainder <= 14:
+        return "подрядчиков"
+    ending = count % 10
+    if ending == 1:
+        return "подрядчик"
+    if 2 <= ending <= 4:
+        return "подрядчика"
+    return "подрядчиков"
+
+
 class Repository(Protocol):
     def discover(self, city: str, category: str) -> tuple[Contractor, ...]: ...
 
@@ -65,6 +77,12 @@ class RecommendationService:
             for candidate in top
         ]
         message = f"Найдено подходящих подрядчиков: {len(cards)}."
+        if diagnostics["busy"]:
+            message += (
+                f" На выбранную дату заняты {diagnostics['busy']} "
+                f"{_contractor_count_label(diagnostics['busy'])} этой категории; "
+                "они исключены из подбора."
+            )
         if len(cards) < 3:
             message += " Показаны все подрядчики города и категории, прошедшие условия заказа; их меньше трёх."
         return {

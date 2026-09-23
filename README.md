@@ -1,4 +1,4 @@
-# Event contractor matching — backend
+# Event contractor matching
 
 Backend ветки `backend/ksusha`: Flask, Python 3.13, SQLite и evidence-based рекомендации.
 Единственный API/product contract — [CONTRACT.md](CONTRACT.md).
@@ -16,7 +16,10 @@ py -3.13 -m venv .venv
 На macOS/Linux замените `py -3.13` на `python3.13`, а `.venv/Scripts/python.exe` — на `.venv/bin/python`.
 Backend слушает `127.0.0.1:5000`; health-check: `GET /api/v1/health`.
 JSON-рекомендации: `POST /api/v1/recommendations`, DTO и примеры — в разделе 13 контракта.
-Это backend; пользовательская HTML-форма и карточки интегрируются веткой `frontend/denis`.
+Главная страница `/` — это серверная HTML-форма: она использует тот же
+`RecommendationService`, что и JSON API, и показывает до трёх карточек с объяснениями,
+synthetic/imputed-индикаторами и отдельными состояниями «категория не найдена» и
+«нет подходящих вариантов».
 
 CSV `data/hackathon_dataset.csv` — неизменённая копия исходных 66 профилей.
 При старте файл полностью валидируется и атомарно загружается в локальную SQLite
@@ -91,5 +94,5 @@ Backend integration tests проверяют Flask → сервис → реал
 с 2026-10-15 на 2026-10-16, отсутствие категории в городе.
 Он печатает конкретные карточки, объяснения, причины отказа и время ответа.
 
-Полный project gate (HTML-форма, UI badges и браузерные E2E) проверяется после интеграции
-с `frontend/denis`; backend не содержит альтернативной HTML-реализации.
+HTML-форма, UI badges и три пользовательских исхода покрыты frontend и integration
+тестами; оба транспорта используют один recommendation pipeline.

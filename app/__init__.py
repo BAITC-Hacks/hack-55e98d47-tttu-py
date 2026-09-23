@@ -9,6 +9,7 @@ from app.models import ValidationError
 from app.repositories import CatalogRepository, load_csv
 from app.services import RecommendationService
 from app.services.explanation import ExplanationService
+from app.web import web
 
 
 def create_app(config: dict | None = None, *, repository=None, ai_client=None) -> Flask:
@@ -34,6 +35,7 @@ def create_app(config: dict | None = None, *, repository=None, ai_client=None) -
         repository, ExplanationService(ai_client)
     )
     app.register_blueprint(api)
+    app.register_blueprint(web)
     app.register_error_handler(ValidationError, validation_response)
 
     @app.errorhandler(RequestEntityTooLarge)
