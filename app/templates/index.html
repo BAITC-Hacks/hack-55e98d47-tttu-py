@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Подобрать подрядчика — Event Match{% endblock %}
+{% block content %}
+  <div class="row g-4 g-xl-5 align-items-start">
+    <section class="col-12 col-lg-5" aria-labelledby="form-title">
+      <div class="mb-4">
+        <p class="text-uppercase text-primary fw-semibold small mb-2">Подбор для вашего события</p>
+        <h1 id="form-title" class="display-6 fw-bold mb-3">Найдём до трёх подходящих подрядчиков</h1>
+        <p class="lead text-body-secondary mb-0">Укажите ключевые условия. Сервис проверит доступность и объяснит, почему каждый вариант подходит.</p>
+      </div>
+
+      <form method="post" class="card border-0 shadow-sm" novalidate data-recommendation-form>
+        <div class="card-body p-3 p-sm-4">
+          <p class="small text-body-secondary"><span aria-hidden="true">*</span> Обязательные поля</p>
+          <div class="row g-3">
+            <div class="col-12 col-sm-6">
+              <label class="form-label" for="city">Город <span aria-hidden="true">*</span></label>
+              <select class="form-select" id="city" name="city" required autocomplete="address-level2" aria-describedby="city-error">
+                <option value="">Выберите город</option>
+                {% for city in cities %}<option value="{{ city }}"{% if form.city == city %} selected{% endif %}>{{ city }}</option>{% endfor %}
+              </select>
+              <div class="invalid-feedback" id="city-error">Выберите город.</div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label class="form-label" for="event_date">Дата события <span aria-hidden="true">*</span></label>
+              <input class="form-control" type="date" id="event_date" name="event_date" value="{{ form.event_date }}" required max="{{ availability_end }}" data-future-date aria-describedby="event-date-help event-date-error">
+              <div class="form-text" id="event-date-help">Доступность известна до 31 декабря 2026.</div>
+              <div class="invalid-feedback" id="event-date-error">Выберите дату в доступном диапазоне.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="event_format">Формат события <span aria-hidden="true">*</span></label>
+              <select class="form-select" id="event_format" name="event_format" required aria-describedby="event-format-error">
+                <option value="">Выберите формат</option>
+                {% for format in event_formats %}<option value="{{ format }}"{% if form.event_format == format %} selected{% endif %}>{{ format }}</option>{% endfor %}
+              </select>
+              <div class="invalid-feedback" id="event-format-error">Укажите формат события.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="category">Категория подрядчика <span aria-hidden="true">*</span></label>
+              <select class="form-select" id="category" name="category" required aria-describedby="category-error">
+                <option value="">Выберите категорию</option>
+                {% for category in categories %}<option value="{{ category }}"{% if form.category == category %} selected{% endif %}>{{ category }}</option>{% endfor %}
+              </select>
+              <div class="invalid-feedback" id="category-error">Укажите категорию подрядчика.</div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label class="form-label" for="budget_kzt">Бюджет, ₸ <span aria-hidden="true">*</span></label>
+              <input class="form-control" type="number" id="budget_kzt" name="budget_kzt" value="{{ form.budget_kzt }}" required min="1" step="1" inputmode="numeric" placeholder="800000" aria-describedby="budget-error">
+              <div class="invalid-feedback" id="budget-error">Укажите бюджет больше нуля.</div>
+            </div>
+            <div class="col-12 col-sm-6">
+              <label class="form-label" for="duration_hours">Длительность, часов <span class="text-body-secondary fw-normal">(необязательно)</span></label>
+              <input class="form-control" type="number" id="duration_hours" name="duration_hours" value="{{ form.duration_hours }}" min="0.5" step="0.5" inputmode="decimal" placeholder="6" aria-describedby="duration-error">
+              <div class="invalid-feedback" id="duration-error">Укажите длительность больше нуля.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="language">Язык <span class="text-body-secondary fw-normal">(необязательно)</span></label>
+              <select class="form-select" id="language" name="language">
+                <option value="">Любой язык</option>
+                {% for language in languages %}<option value="{{ language }}"{% if form.language == language %} selected{% endif %}>{{ language }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-lg w-100 mt-4" type="submit">Получить рекомендации</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="col-12 col-lg-7" aria-labelledby="results-title" aria-live="polite" aria-atomic="false">
+      <div class="result-shell result-{{ result.kind }}" data-result-kind="{{ result.kind }}">
+        <div class="d-flex align-items-start gap-3 mb-3">
+          <div class="state-mark" aria-hidden="true"></div>
+          <div>
+            <h2 id="results-title" class="h3 mb-2" tabindex="-1">{{ result.title }}</h2>
+            <p class="text-body-secondary mb-0">{{ result.message }}</p>
+          </div>
+        </div>
+
+        {% if result.kind == "matched" %}
+          <p class="small fw-semibold mb-3">{{ result.count_note }}</p>
+          <div class="row row-cols-1 g-3">
+            {% for item in result.cards %}
+              <div class="col">
+                <article class="card recommendation-card h-100" aria-labelledby="recommendation-{{ loop.index }}">
+                  <div class="card-body p-3 p-sm-4">
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                      {% if item.synthetic %}<span class="badge text-bg-warning">Синтетический профиль</span>{% endif %}
+                      {% if item.city_imputed %}<span class="badge text-bg-secondary">Город заполнен автоматически</span>{% endif %}
+                      {% if item.price_imputed %}<span class="badge text-bg-secondary">Цена заполнена автоматически</span>{% endif %}
+                    </div>
+                    <h3 class="h4 mb-1 text-break" id="recommendation-{{ loop.index }}">{{ item.anon_name }}</h3>
+                    <p class="text-body-secondary mb-3 text-break">{{ item.category }} <span aria-hidden="true">·</span> {{ item.city }}</p>
+                    <section class="explanation-block p-3 rounded-3 mb-3" aria-label="Почему подходит">
+                      <h4 class="h6 text-uppercase mb-2">Почему подходит</h4>
+                      <p class="mb-0 explanation-text">{{ item.explanation }}</p>
+                    </section>
+                    <p class="fs-5 mb-0"><span class="text-body-secondary fs-6">Цена от</span> <strong>{{ item.price }} ₸</strong></p>
+                    <p class="small text-body-secondary mb-0">Итоговая стоимость может отличаться.</p>
+                  </div>
+                </article>
+              </div>
+            {% endfor %}
+          </div>
+        {% elif result.kind == "no_eligible_candidates" and result.reasons %}
+          <h3 class="h6 mt-4">Почему варианты были исключены</h3>
+          <ul class="mb-0">
+            {% for reason in result.reasons %}<li>{{ reason.label }} — {{ reason.count }}</li>{% endfor %}
+          </ul>
+          <p class="small text-body-secondary mt-3 mb-0">Один подрядчик может не пройти сразу несколько условий.</p>
+        {% elif result.kind in ("category_not_found", "no_eligible_candidates", "validation_error", "backend_error", "empty") %}
+          <p class="small mb-0">Измените условия в форме или повторите попытку.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,47 @@
+:root {
+  --app-accent: #4355b9;
+  --app-explanation: #eef1ff;
+}
+
+body { min-width: 320px; }
+
+.btn-primary {
+  --bs-btn-bg: var(--app-accent);
+  --bs-btn-border-color: var(--app-accent);
+}
+
+.result-shell {
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  min-height: 12rem;
+}
+
+.state-mark {
+  background: var(--bs-secondary);
+  border-radius: 50%;
+  flex: 0 0 auto;
+  height: .8rem;
+  margin-top: .55rem;
+  width: .8rem;
+}
+
+.result-matched .state-mark { background: var(--bs-success); }
+.result-category_not_found .state-mark,
+.result-no_eligible_candidates .state-mark { background: var(--bs-warning); }
+.result-validation_error .state-mark,
+.result-backend_error .state-mark,
+.result-empty .state-mark { background: var(--bs-danger); }
+
+.recommendation-card { border-color: rgba(67, 85, 185, .25); }
+.explanation-block { background: var(--app-explanation); }
+.explanation-text { font-size: 1.05rem; line-height: 1.6; }
+
+@media (min-width: 992px) {
+  .result-shell { padding: 1.75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
