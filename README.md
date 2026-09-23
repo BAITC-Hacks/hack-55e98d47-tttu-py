@@ -319,7 +319,7 @@ fallback выбирает первый содержательный фрагме
 Демонстрация контролируемого отказа без ключей и внешних запросов:
 
 ```powershell
-.venv/Scripts/python.exe -m pytest -q tests/unit/test_ai_client.py tests/integration/test_ai_pipeline.py --basetemp=instance/qa-ai
+.venv/Scripts/python.exe -m pytest -q tests/unit/test_ai_client.py tests/integration/test_ai_pipeline.py --basetemp=.pytest-ai-temp
 ```
 
 ## Catalog Administration
@@ -357,7 +357,7 @@ CLI требует доверенного доступа к ОС; dedicated fact
 
 ```powershell
 .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
-.venv/Scripts/python.exe -m pytest -q --basetemp=instance/qa-pytest
+.venv/Scripts/python.exe -m pytest -q --basetemp=.pytest-release-temp
 .venv/Scripts/python.exe -m ruff check .
 .venv/Scripts/python.exe -m black --check app tests scripts run.py
 .venv/Scripts/python.exe -m pip check
