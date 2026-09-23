@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from flask import Flask, g, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
 
@@ -9,9 +11,11 @@ from app.localization import text
 from app.models import ValidationError
 from app.repositories import CatalogRepository, load_csv
 from app.services import RecommendationService
+from app.services.catalog_management import CatalogManager
 from app.services.explanation import ExplanationService
 from app.services.export import SnapshotStore
 from app.web import web
+from app.web.catalog_admin import LoginLimiter, catalog_admin
 
 
 def create_app(config: dict | None = None, *, repository=None, ai_client=None) -> Flask:
@@ -20,9 +24,15 @@ def create_app(config: dict | None = None, *, repository=None, ai_client=None) -
     if config:
         app.config.update(config)
     app.json.ensure_ascii = False
-    if repository is None:
-        contractors = load_csv(app.config["DATASET_PATH"])
+    initialize_repository = repository is None
+    if initialize_repository:
         repository = CatalogRepository(app.config["DATABASE_PATH"])
+    manager = CatalogManager(
+        app.config["CATALOG_ACTIVE_PATH"], app.config["DATASET_PATH"], repository
+    )
+    if initialize_repository:
+        active = Path(app.config["CATALOG_ACTIVE_PATH"])
+        contractors = load_csv(active if active.exists() else app.config["DATASET_PATH"])
         repository.initialize(contractors)
     if ai_client is None and all(
         app.config.get(name) for name in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL")
@@ -32,13 +42,16 @@ def create_app(config: dict | None = None, *, repository=None, ai_client=None) -
             app.config["LLM_BASE_URL"],
             app.config["LLM_MODEL"],
         )
-    app.extensions["catalog_repository"] = repository
+    app.extensions["catalog_repository"] = manager
+    app.extensions["catalog_manager"] = manager
+    app.extensions["catalog_login_limiter"] = LoginLimiter()
     app.extensions["export_snapshots"] = SnapshotStore()
     app.extensions["recommendation_service"] = RecommendationService(
-        repository, ExplanationService(ai_client)
+        manager, ExplanationService(ai_client)
     )
     app.register_blueprint(api)
     app.register_blueprint(web)
+    app.register_blueprint(catalog_admin)
     app.register_error_handler(ValidationError, validation_response)
 
     @app.errorhandler(RequestEntityTooLarge)

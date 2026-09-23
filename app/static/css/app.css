@@ -149,3 +149,39 @@ a { color: var(--app-accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Catalog administration shares the public light design system. */
+.header-actions { display: flex; align-items: center; gap: 20px; }
+.catalog-link { display: inline-flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 600; text-decoration: none; color: #595d76; }
+.catalog-link:hover { color: var(--app-accent); }
+.catalog-link svg { width: 17px; height: 17px; flex-shrink: 0; }
+.admin-panel { padding: 24px; background: #fff; border: 1px solid var(--app-border); border-radius: 18px; }
+.admin-login { max-width: 520px; }
+.admin-login .btn, .admin-workspace [data-admin-submit-button] { padding: 12px 20px; }
+.admin-workspace .alert { font-size: 13px; border-radius: 12px; line-height: 1.7; }
+.admin-workspace .h3 { font-size: 22px; font-weight: 650; }
+.admin-workspace .h4 { font-size: 17px; }
+.admin-workspace p, .admin-workspace dd { font-size: 13px; line-height: 1.7; }
+.admin-workspace .hero-description { font-size: 15px; }
+.admin-workspace .card { border-color: var(--app-border); border-radius: 12px; }
+.admin-workspace dt { font-weight: 500; margin-bottom: 9px; }
+.admin-workspace dd.h3 { font-size: 28px; }
+.upload-dropzone { padding: 28px; border: 1px dashed #c7c5e6; background: #fafaff; border-radius: 14px; }
+.upload-dropzone .form-control { background: #fff; }
+.upload-dropzone .form-text { font-size: 12px; line-height: 1.7; margin-top: 12px; }
+.admin-preview-table { border: 1px solid var(--app-border); border-radius: 10px; }
+.admin-preview-table table { min-width: 700px; font-size: 12px; }
+.admin-preview-table th, .admin-preview-table td { padding: 12px; }
+[data-admin-submit-button] { display: inline-flex; gap: 10px; align-items: center; justify-content: center; }
+@media (max-width: 600px) {
+  .header-inner { flex-wrap: wrap; padding-block: 15px; }
+  .header-actions { gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+  .catalog-link { font-size: 11px; }
+  .admin-panel, .upload-dropzone { padding: 17px; }
+  .admin-workspace .btn { white-space: normal; }
+  .admin-workspace .hero-description { font-size: 14px; }
+}
+@media (max-width: 479px) {
+  .header-actions { width: 100%; }
+  .admin-workspace [data-admin-submit-button] { width: 100%; }
+}

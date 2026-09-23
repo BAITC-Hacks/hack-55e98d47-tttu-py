@@ -1042,7 +1042,8 @@ the original text. No generated export is written to a public filesystem path.
 
 ## 23.3 Catalog administration foundation
 
-There is no public upload or HTTP admin endpoint. Local Flask CLI commands
+The CLI foundation has no public upload endpoint. The authenticated browser extension
+is defined in section 23.5. Local Flask CLI commands
 `catalog-admin validate FILE` and `catalog-admin stage FILE` require explicit
 runtime `CATALOG_ADMIN_ENABLED=1` and trusted OS access. This is an operator boundary,
 not a replacement for authentication in any future HTTP administration interface.
@@ -1103,3 +1104,45 @@ the explanations. Mobile tables scroll within their own container.
 
 The integrated UI uses a light-only theme, including under a dark system preference.
 Responsive visual styling does not change recommendation semantics or fabricate demo results.
+
+## 23.5 Authenticated browser catalog upload
+
+The light-only Web UI links to `/admin/catalog`. Public users can view the login
+screen, but cannot upload, preview or activate a catalog without administrator
+authentication. This is a single-operator administrative role, separate from the
+public recommendation flow. Configuration requires an explicit local setup command
+or runtime password hash and session secret; no default password is supplied.
+Password hashes use Werkzeug's password hashing; raw passwords are never persisted.
+Authentication expires after 30 minutes and is invalidated when credentials change.
+Login attempts are bounded; session cookies are HttpOnly and SameSite=Strict.
+Use HTTPS and secure cookies when deployed beyond localhost.
+
+All administrative POSTs, including login, require a session-bound CSRF token.
+Upload accepts one `.csv` file of at most 1 MiB, strict UTF-8 or UTF-8 BOM,
+and reuses the existing complete catalog schema and row validation. Browser imports
+are additionally limited to 1000 profiles, 120-character IDs/names, 6000-character
+descriptions, 32 items per service list and 366 busy dates per profile. Categories,
+formats and communication languages must occur in the original dataset vocabulary. Original
+client filenames never determine server filesystem paths. Invalid input changes
+neither the active catalog nor the original dataset.
+
+Upload first creates a bounded 15-minute, session-owned preview with SHA-256,
+profile/city/category counts and a sample of at most five factual profiles.
+Only a separate explicit POST applies that preview. Expired, foreign-session and
+stale previews cannot activate data. Applying a catalog replaces the complete
+active catalog; it is not an append operation. The page explains this before apply.
+Activations are serialized within the supported single-process deployment.
+
+An applied catalog is stored as a separate configured active CSV under `instance`,
+and loaded on later application startup. The original DATASET_PATH remains
+untouched. A new SQLite snapshot is built with the existing transactional initialization
+before publishing the active CSV. The locked repository facade switches to it only
+after atomic CSV publication; pre-publication failures preserve previous data. New Web and API requests use the same
+updated repository and recommendation pipeline. Existing recommendation/export
+snapshots continue to describe their original generated result until expiry.
+
+The browser interface is fully localized for ru/kk/en, including login, upload,
+validation, preview, success and error states. It explicitly distinguishes an
+input catalog CSV from a recommendation-export CSV. Native file-picker text is
+controlled by the browser. No public catalog mutation API, multi-user account
+management, distributed activation, or historical rollback UI is introduced.

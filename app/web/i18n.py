@@ -269,6 +269,7 @@ _COPY: dict[str, dict[str, str]] = {
 # Labels describe the language of the saved generation, independently of UI locale.
 _COPY["ru"].update(
     {
+        "upload_catalog": "Загрузить каталог",
         "explanation_language": "Почему подходит · {language}",
         "source_message_label": "Сообщение сохранённого результата",
         "export_unavailable_notice": "Результат показан, но сохранить его для экспорта не удалось. Повторите поиск, чтобы скачать результат.",
@@ -277,6 +278,7 @@ _COPY["ru"].update(
 )
 _COPY["kk"].update(
     {
+        "upload_catalog": "Каталогты жүктеу",
         "explanation_language": "Неліктен сәйкес келеді · {language}",
         "source_message_label": "Сақталған нәтиженің хабарламасы",
         "export_unavailable_notice": "Нәтиже көрсетілді, бірақ экспорт үшін сақталмады. Жүктеп алу үшін іздеуді қайталаңыз.",
@@ -285,6 +287,7 @@ _COPY["kk"].update(
 )
 _COPY["en"].update(
     {
+        "upload_catalog": "Upload catalog",
         "explanation_language": "Why this matches · {language}",
         "source_message_label": "Saved result message",
         "export_unavailable_notice": "The result is shown, but could not be saved for export. Search again to download it.",

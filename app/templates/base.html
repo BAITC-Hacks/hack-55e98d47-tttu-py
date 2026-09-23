@@ -7,13 +7,15 @@
     <meta name="description" content="{{ copy.meta_description }}">
     <title>{% block title %}{{ copy.page_title }}{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/app.css', v='2') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/app.css', v='3') }}" rel="stylesheet">
   </head>
   <body>
     <a class="visually-hidden-focusable position-absolute top-0 start-0 p-3 bg-white" href="#main-content">{{ copy.skip_link }}</a>
     <header class="site-header">
       <div class="app-container header-inner">
         <a class="brand" href="{{ url_for('web.index', locale=locale) }}"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6M15 15l4 4M5 5l3 3" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Event<span class="brand-accent">Match</span></a>
+        <div class="header-actions">
+        <a class="catalog-link" href="{{ request.script_root }}/admin/catalog?locale={{ locale }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M4 15v5h16v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ copy.upload_catalog }}</a>
         <nav class="locale-switcher" aria-label="{{ copy.locale_switcher }}">
           {% for option in locale_options %}
             {% if form is not none %}
@@ -29,17 +31,18 @@
               </form>
             {% else %}
               <a class="btn btn-sm {% if option.active %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-                 href="{{ url_for('web.index', locale=option.code) }}" lang="{{ option.code }}"{% if option.active %} aria-current="page"{% endif %}>
+                 href="{{ url_for(locale_target or 'web.index', locale=option.code) }}" lang="{{ option.code }}"{% if option.active %} aria-current="page"{% endif %}>
                 {{ option.label }}
               </a>
             {% endif %}
           {% endfor %}
         </nav>
+        </div>
       </div>
     </header>
     <main id="main-content" class="app-container main-content">
       {% block content %}{% endblock %}
     </main>
-    <script src="{{ url_for('static', filename='js/form.js', v='2') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/form.js', v='3') }}" defer></script>
   </body>
 </html>
