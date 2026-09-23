@@ -55,6 +55,15 @@ class RecommendationRequest:
         else:
             values["duration_hours"] = duration
         language = payload.get("language")
+        if "communication_language" in payload:
+            alias = payload["communication_language"]
+            normalized_alias = alias.strip() if isinstance(alias, str) else alias
+            normalized_language = language.strip() if isinstance(language, str) else language
+            if "language" in payload and normalized_alias != normalized_language:
+                errors["communication_language"] = (
+                    "language и communication_language должны совпадать."
+                )
+            language = alias
         if language is not None and (
             not isinstance(language, str) or not language.strip() or len(language) > 120
         ):

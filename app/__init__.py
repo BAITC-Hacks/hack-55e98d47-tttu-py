@@ -1,14 +1,16 @@
-from flask import Flask, jsonify
+from flask import Flask, g, jsonify
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.ai.client import LLMClient
 from app.api.errors import validation_response
 from app.api.routes import api
 from app.config import runtime_config
+from app.localization import text
 from app.models import ValidationError
 from app.repositories import CatalogRepository, load_csv
 from app.services import RecommendationService
 from app.services.explanation import ExplanationService
+from app.services.export import SnapshotStore
 from app.web import web
 
 
@@ -31,6 +33,7 @@ def create_app(config: dict | None = None, *, repository=None, ai_client=None) -
             app.config["LLM_MODEL"],
         )
     app.extensions["catalog_repository"] = repository
+    app.extensions["export_snapshots"] = SnapshotStore()
     app.extensions["recommendation_service"] = RecommendationService(
         repository, ExplanationService(ai_client)
     )
@@ -49,7 +52,7 @@ def create_app(config: dict | None = None, *, repository=None, ai_client=None) -
                 {
                     "error": {
                         "code": "INTERNAL_ERROR",
-                        "message": "Внутренняя ошибка сервера.",
+                        "message": text("internal", getattr(g, "product_locale", "ru")),
                     }
                 }
             ),

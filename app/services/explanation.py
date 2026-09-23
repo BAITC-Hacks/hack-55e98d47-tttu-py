@@ -1,5 +1,7 @@
 from typing import Protocol
 
+from app.localization import localized_explanation
+from app.localization import text as localized_text
 from app.services.evidence import Evidence
 
 
@@ -11,8 +13,18 @@ def money(value: int) -> str:
     return f"{value:,}".replace(",", " ")
 
 
-def render_explanation(evidence: Evidence, reason_id: str | None = None) -> str:
+def render_explanation(
+    evidence: Evidence, reason_id: str | None = None, *, locale: str = "ru"
+) -> str:
     """Only code-owned facts and verbatim source excerpts become user-facing prose."""
+    if locale != "ru":
+        reason = next(
+            (item for item in evidence.semantic_reasons if item.reason_id == reason_id),
+            evidence.semantic_reasons[0] if evidence.semantic_reasons else None,
+        )
+        return localized_explanation(
+            evidence, reason.source_text if reason else None, locale, money
+        )
     text = (
         f"Цена от {money(evidence.price_from_kzt)} ₸ при бюджете {money(evidence.budget_kzt)} ₸; "
         f"категория «{evidence.requested_category}», город — {evidence.city}, "
@@ -66,7 +78,7 @@ class ExplanationService:
     def __init__(self, client: ExplanationClient | None = None):
         self.client = client
 
-    def explain(self, evidence: tuple[Evidence, ...]) -> dict[str, str]:
+    def explain(self, evidence: tuple[Evidence, ...], *, locale: str = "ru") -> dict[str, str]:
         selected = {}
         if self.client is not None and evidence:
             try:
@@ -76,12 +88,16 @@ class ExplanationService:
                 # Deliberately do not log, stringify, or return them.
                 selected = {}
         result = {
-            item.candidate_id: render_explanation(item, selected.get(item.candidate_id))
+            item.candidate_id: render_explanation(
+                item, selected.get(item.candidate_id), locale=locale
+            )
             for item in evidence
         }
         # Even identical source profiles remain identifiable without using their names.
         duplicates = {text for text in result.values() if list(result.values()).count(text) > 1}
         for candidate_id, text in result.items():
             if text in duplicates:
-                result[candidate_id] = f"Профиль {candidate_id}: {text[0].lower()}{text[1:]}"
+                result[candidate_id] = (
+                    f"{localized_text('profile', locale)} {candidate_id}: {text[0].lower()}{text[1:]}"
+                )
         return result

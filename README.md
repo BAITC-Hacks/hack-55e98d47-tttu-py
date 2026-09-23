@@ -96,3 +96,51 @@ Backend integration tests проверяют Flask → сервис → реал
 
 HTML-форма, UI badges и три пользовательских исхода покрыты frontend и integration
 тестами; оба транспорта используют один recommendation pipeline.
+
+## Экспорт и locale
+
+Расширения описаны в разделе 23 [CONTRACT.md](CONTRACT.md). Старый JSON response
+не меняет структуру. Payload может содержать `locale`: `ru` (default), `kk`, `en`.
+Это язык текстов продукта; `language` или его alias `communication_language` остаётся
+требованием к языку подрядчика. При одновременной передаче alias и `language` значения
+должны совпадать. Исходные описания и значения каталога не переводятся.
+
+Для экспорта нового результата отправьте `POST /api/v1/recommendations/export`
+с `{"format":"csv","request":{...параметры рекомендации...}}`; для JSON замените
+`csv` на `json`. Выполняется ровно один вызов общего RecommendationService.
+
+Чтобы экспортировать именно показанный API-результат, передайте `X-Enable-Export: true`
+обычному `POST /api/v1/recommendations`. Сохраните ответный заголовок
+`X-Recommendation-Export-Token`, затем отправьте его в JSON body экспортного запроса:
+`{"format":"json","export_token":"..."}`. Этот путь не пересчитывает рекомендации
+и не вызывает AI; сохраняются объяснения, locale и timestamp исходного результата.
+Frontend может подключить этот API без второго алгоритма рекомендаций.
+
+Snapshot хранится 15 минут в памяти одного процесса, максимум 128 записей размером
+до 256 KiB каждая. Старые записи могут вытесняться; перезапуск очищает snapshots.
+Для нескольких workers потребуется общее хранилище либо привязка запросов к одному
+worker. Токен является bearer capability: не помещайте его в URL или журналы.
+
+CSV содержит UTF-8 BOM, фиксированные колонки, корректное quoting и защиту от
+формул Excel. У потенциально опасных текстовых ячеек добавляется апостроф; JSON
+сохраняет исходный текст. Даже zero-result экспорт содержит параметры и состояние.
+Файлы формируются в памяти, с фиксированными именами, без сохранения на диск.
+
+## Локальная административная подготовка каталога
+
+Публичного upload endpoint нет. Используйте отдельную CLI-фабрику, чтобы не запускать
+инициализацию рабочего каталога:
+
+```powershell
+$env:CATALOG_ADMIN_ENABLED = "1"
+.venv/Scripts/python.exe -m flask --app app.admin:create_admin_app catalog-admin validate data/hackathon_dataset.csv
+.venv/Scripts/python.exe -m flask --app app.admin:create_admin_app catalog-admin stage data/hackathon_dataset.csv
+```
+
+Операции доступны только доверенному локальному оператору с явным enablement.
+Поддерживаются UTF-8 / UTF-8 BOM, максимум 1 MiB; схема проверяется тем же parser,
+что при запуске backend. Ошибка оставляет прежнюю staging-базу без изменений.
+`validate` ничего не импортирует. `stage` атомарно создаёт отдельную SQLite-базу
+`instance/catalog-staged.sqlite3`; путь задаётся через `CATALOG_STAGING_PATH` и
+не может совпадать с активными CSV/SQLite. Активный каталог не переключается.
+Новая функциональность не меняет существующий startup seed из CSV.

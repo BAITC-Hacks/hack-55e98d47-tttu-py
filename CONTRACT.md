@@ -948,3 +948,116 @@ EXPLAIN WITH EVIDENCE.
 USE AI WHERE AI ADDS VALUE.
 NEVER LET AI OVERRIDE FACTS.
 ```
+
+---
+
+# 23. Backend product extensions
+
+These additive extensions preserve the integrated recommendation pipeline and the
+legacy response schema. Sections below refine the default Russian explanation rule
+only when the caller explicitly selects another product locale.
+
+## 23.1 Locale and contractor communication language
+
+Recommendation payloads may contain `locale`: `ru` (default), `kk`, or `en`.
+It controls server-authored messages and explanation framing only. Catalog values
+and quoted original description evidence remain unchanged; quotes are labelled as
+original text in kk/en. No unverified translation of evidence is performed.
+
+`communication_language` is an optional alias of existing `language`. Both express
+the required contractor language in catalog vocabulary. If both keys are supplied,
+their trimmed values must agree (including null), otherwise HTTP 422. Locale is
+never inferred from contractor language, nor is contractor language inferred from
+locale. Locale is excluded from the ranking request and from AI evidence.
+
+Default ru preserves existing messages, availability diagnostics, filtering,
+ranking, order, and response fields. Unsupported locales produce HTTP 422.
+Machine status/error/reason codes are not translated. Backend locale support does
+not imply translation of the existing HTML templates.
+
+## 23.2 Recommendation export
+
+`POST /api/v1/recommendations/export` accepts exactly one of:
+
+```json
+{"format":"json","request":{"city":"Астана","event_date":"2026-10-15","event_format":"свадьба","category":"Ведущий","budget_kzt":1000000,"locale":"ru"}}
+```
+
+```json
+{"format":"csv","export_token":"opaque-token-from-response-header"}
+```
+
+`format` is required and is `csv` or `json`. Request mode invokes the SAME
+RecommendationService once and exports the result generated now; it is not a
+promise to reproduce an earlier AI explanation. Token mode exports exactly the
+previous snapshot without rerunning the service or AI, including its timestamp.
+
+To capture a snapshot, normal `POST /api/v1/recommendations` may carry
+`X-Enable-Export: true`. The response body stays unchanged; the response header
+`X-Recommendation-Export-Token` carries an opaque bearer capability. Tokens expire
+after 15 minutes, are never placed in URLs, and are held in a bounded per-process
+store of 128 entries (oldest entries may be evicted). Restart or another worker
+may make a token unavailable; this foundation targets one application process.
+Absent/expired tokens return HTTP 404 with `EXPORT_NOT_FOUND`. Invalid export
+inputs return the existing HTTP 422 validation envelope. Internal export failures
+return a generic HTTP 500 error without paths or exception details.
+
+Downloads use fixed filenames `recommendations.csv` / `recommendations.json`,
+`Content-Disposition: attachment`, `Cache-Control: no-store` and `nosniff`.
+
+JSON export is UTF-8 with this versioned structure and field order:
+
+```json
+{
+  "schema_version": "recommendation-export.v1",
+  "generated_at": "2026-09-23T09:00:00.000000Z",
+  "locale": "ru",
+  "request": {
+    "city": "Астана", "event_date": "2026-10-15", "event_format": "свадьба",
+    "category": "Ведущий", "budget_kzt": 1000000,
+    "duration_hours": null, "language": null
+  },
+  "result": {"status":"matched","count":1,"message":"...","recommendations":[]}
+}
+```
+
+The result contains the actual recommendation response, including cards and
+`reasons` when applicable; the sketch above abbreviates the cards. Request fields
+are normalized and allowlisted; `communication_language` is exported as `language`.
+Unknown input fields, configuration, credentials, full catalog data and internal
+evidence objects are never serialized. Timestamp is generation completion time in UTC.
+
+CSV uses UTF-8 BOM, standard CSV quoting, CRLF row endings and this fixed column order:
+
+```text
+schema_version,generated_at,locale,request_city,request_event_date,request_event_format,request_category,request_budget_kzt,request_duration_hours,request_language,status,count,message,reasons,id,anon_name,category,city,price_from_kzt,synthetic,city_imputed,price_imputed,explanation
+```
+
+Metadata repeats on each candidate row. Zero-result responses contain one metadata
+row with empty contractor columns. Reasons are a JSON object with sorted keys;
+booleans are `true`/`false`, null values are empty cells. All text cells are protected
+against spreadsheet formula injection, including leading whitespace/control-character
+bypasses. CSV safety escaping may prefix a text cell with an apostrophe; JSON retains
+the original text. No generated export is written to a public filesystem path.
+
+## 23.3 Catalog administration foundation
+
+There is no public upload or HTTP admin endpoint. Local Flask CLI commands
+`catalog-admin validate FILE` and `catalog-admin stage FILE` require explicit
+runtime `CATALOG_ADMIN_ENABLED=1` and trusted OS access. This is an operator boundary,
+not a replacement for authentication in any future HTTP administration interface.
+Invoke with `flask --app app.admin:create_admin_app catalog-admin ...`; this dedicated
+CLI factory never initializes or reseeds the active catalog and has no HTTP routes.
+
+Both commands accept only regular non-symlink files, read at most 1 MiB plus one
+limit-check byte, require strict UTF-8 or UTF-8 BOM, reject NUL and malformed CSV,
+and reuse the existing complete catalog schema/model validation. Empty catalogs,
+duplicates and invalid fields fail closed. Success output contains counts only;
+failures do not echo content, paths, secrets or internal exceptions.
+
+`validate` makes no catalog changes. `stage` creates a separate SQLite snapshot at
+the operator-configured `CATALOG_STAGING_PATH` (default `instance/catalog-staged.sqlite3`)
+by building a temporary database and atomically replacing the staging file. Active
+CSV/SQLite paths cannot be selected as staging destinations. Failure preserves the
+previous staging snapshot. No automatic activation, public upload, or change to
+startup seeding is included; the running recommendation catalog remains unchanged.

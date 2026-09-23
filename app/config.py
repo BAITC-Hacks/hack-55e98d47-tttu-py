@@ -13,4 +13,8 @@ def runtime_config() -> dict:
         "LLM_BASE_URL": os.environ.get("LLM_BASE_URL", ""),
         "LLM_MODEL": os.environ.get("LLM_MODEL", ""),
         "MAX_CONTENT_LENGTH": 16384,
+        "CATALOG_ADMIN_ENABLED": os.environ.get("CATALOG_ADMIN_ENABLED") == "1",
+        "CATALOG_STAGING_PATH": os.environ.get(
+            "CATALOG_STAGING_PATH", str(ROOT / "instance/catalog-staged.sqlite3")
+        ),
     }

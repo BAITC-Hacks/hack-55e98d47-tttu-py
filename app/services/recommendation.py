@@ -1,5 +1,6 @@
 from typing import Protocol
 
+from app.localization import locale_from_payload, text
 from app.models import Contractor, RecommendationRequest
 from app.services.evidence import build_evidence
 from app.services.explanation import ExplanationService
@@ -30,6 +31,7 @@ class RecommendationService:
 
     def recommend(self, payload: object) -> dict:
         # Web routes pass a dict too, so both transports use the same validation.
+        locale = locale_from_payload(payload)
         request = RecommendationRequest.from_payload(payload)
         candidates = tuple(
             candidate
@@ -40,7 +42,7 @@ class RecommendationService:
             return {
                 "status": "category_not_found",
                 "count": 0,
-                "message": f"В городе «{request.city}» нет подрядчиков категории «{request.category}».",
+                "message": text("absent", locale, city=request.city, category=request.category),
                 "recommendations": [],
             }
         diagnostics = dict.fromkeys(REASONS, 0)
@@ -55,13 +57,17 @@ class RecommendationService:
             return {
                 "status": "no_eligible_candidates",
                 "count": 0,
-                "message": "Подрядчики этой категории есть, но ни один не прошёл условия заказа.",
+                "message": text("rejected", locale),
                 "reasons": diagnostics,
                 "recommendations": [],
             }
         top = rank(tuple(eligible), request)[:3]
         evidence = tuple(build_evidence(candidate, request) for candidate in top)
-        explanations = self.explanations.explain(evidence)
+        explanations = (
+            self.explanations.explain(evidence)
+            if locale == "ru"
+            else self.explanations.explain(evidence, locale=locale)
+        )
         cards = [
             {
                 "id": candidate.id,
@@ -76,15 +82,16 @@ class RecommendationService:
             }
             for candidate in top
         ]
-        message = f"Найдено подходящих подрядчиков: {len(cards)}."
+        message = text("matched", locale, count=len(cards))
         if diagnostics["busy"]:
-            message += (
-                f" На выбранную дату заняты {diagnostics['busy']} "
-                f"{_contractor_count_label(diagnostics['busy'])} этой категории; "
-                "они исключены из подбора."
+            message += text(
+                "busy",
+                locale,
+                count=diagnostics["busy"],
+                label=_contractor_count_label(diagnostics["busy"]),
             )
         if len(cards) < 3:
-            message += " Показаны все подрядчики города и категории, прошедшие условия заказа; их меньше трёх."
+            message += text("few", locale)
         return {
             "status": "matched",
             "count": len(cards),
