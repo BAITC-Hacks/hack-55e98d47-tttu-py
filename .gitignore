@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+API key.txt
+*.key
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+instance/
+*.sqlite*
+.coverage
+htmlcov/

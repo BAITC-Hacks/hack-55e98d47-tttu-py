@@ -1,2 +1,95 @@
-# hack-55e98d47-tttu-py
-Hackathon team repository for TTTU.py
+# Event contractor matching — backend
+
+Backend ветки `backend/ksusha`: Flask, Python 3.13, SQLite и evidence-based рекомендации.
+Единственный API/product contract — [CONTRACT.md](CONTRACT.md).
+
+## Запуск
+
+Из корня репозитория, с установленным Python 3.13:
+
+```powershell
+py -3.13 -m venv .venv
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe run.py
+```
+
+На macOS/Linux замените `py -3.13` на `python3.13`, а `.venv/Scripts/python.exe` — на `.venv/bin/python`.
+Backend слушает `127.0.0.1:5000`; health-check: `GET /api/v1/health`.
+JSON-рекомендации: `POST /api/v1/recommendations`, DTO и примеры — в разделе 13 контракта.
+Это backend; пользовательская HTML-форма и карточки интегрируются веткой `frontend/denis`.
+
+CSV `data/hackathon_dataset.csv` — неизменённая копия исходных 66 профилей.
+При старте файл полностью валидируется и атомарно загружается в локальную SQLite
+`instance/catalog.sqlite3`; невалидный или отсутствующий каталог останавливает запуск.
+Импорт сохраняет исходные описания, multi-category, 13 synthetic-профилей и все imputed-флаги.
+Отдельные миграции не нужны: две таблицы `contractors` / `categories` создаются при первом запуске.
+SQLite — восстанавливаемый snapshot CSV, не место для ручного редактирования каталога.
+
+## Runtime configuration
+
+`.env.example` перечисляет переменные; `.env` не загружается автоматически.
+Переменные нужно передать процессу через shell/secret manager. Реальные ключи не добавляйте в файлы Git.
+
+| Переменная | Назначение |
+| --- | --- |
+| `DATASET_PATH` | Путь к CSV; по умолчанию `data/hackathon_dataset.csv` относительно корня проекта |
+| `DATABASE_PATH` | Путь к SQLite; по умолчанию `instance/catalog.sqlite3` |
+| `LLM_API_KEY` | Runtime credential провайдера; необязательно |
+| `LLM_BASE_URL` | HTTPS API base URL провайдера, включая version prefix, без `/chat/completions` |
+| `LLM_MODEL` | Идентификатор модели у провайдера |
+
+AI включается только при наличии всех трёх `LLM_*` значений. Используется совместимый с
+chat-completions JSON endpoint с поддержкой `response_format=json_object` и `temperature=0`.
+Если провайдер не поддерживает параметры, отвечает некорректно или недоступен, работает fallback.
+Файл `API key.txt` исключён из текущего Git index и игнорируется; приложение его не читает.
+Для локального запуска ключ можно прочитать из своего secret-хранилища в `LLM_API_KEY` без вывода значения.
+
+## Pipeline и AI
+
+Общий сервис доступен как `app.extensions["recommendation_service"].recommend(payload)`.
+Web-интеграция передаёт сюда словарь с JSON-типами полей после разбора HTML-формы и
+обрабатывает `ValidationError.details`; отдельный алгоритм рекомендаций не нужен.
+Каталог для вариантов формы доступен через `app.extensions["catalog_repository"].all()`.
+`create_app(config, repository=..., ai_client=...)` позволяет изолированно тестировать оба транспорта.
+
+Все hard constraints проверяет Python. Диагностика считает каждое нарушенное условие,
+поэтому один профиль может учитываться в нескольких причинах отказа.
+После фильтров deterministic ranking использует bounded lexical semantic signal описания,
+бюджет и optional-параметры; точная формула находится в `app/services/ranking.py`.
+Последний tie-breaker — `id ASC`. Внешняя модель не участвует в score или сортировке.
+
+AI получает evidence только для финальных ≤3 кандидатов одним batch-запросом.
+Он выбирает подходящий `reason_id` из конкретных фрагментов описания каждого кандидата.
+Python проверяет принадлежность каждого ID и собирает 1–2 русских предложения из фактов
+и выбранной цитаты. Свободные неподтверждённые утверждения от модели не принимаются.
+Это намеренно ограниченная AI-часть: семантический выбор evidence, а не свободная генерация прозы.
+При отсутствии подходящего содержательного фрагмента используются точные структурированные факты.
+Цена всегда указана «от»; `max_hours=null` не интерпретируется как гарантия безлимитной работы.
+Один вызов ограничен общим deadline 3 секунды, без повторов; любой сбой ведёт к deterministic fallback.
+
+## Проверка и live demo
+
+```powershell
+.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+.venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe -m ruff check .
+.venv/Scripts/python.exe -m black --check app tests scripts run.py
+```
+
+Unit tests проверяют загрузку, валидацию, каждый фильтр, ranking, evidence и AI transport.
+Backend integration tests проверяют Flask → сервис → реальный CSV/SQLite, JSON DTO и AI success/failure.
+Ни один тест не отправляет реальный ключ или сетевой запрос внешнему AI-провайдеру.
+
+При работающем `run.py` выполните в другом терминале:
+
+```powershell
+.venv/Scripts/python.exe -X utf8 scripts/demo.py
+```
+
+Скрипт выполняет пять настоящих HTTP-запросов и проверяет результат: плотная категория
+«Ведущий», редкая «Флорист», все отклонены по бюджету, изменение только даты
+с 2026-10-15 на 2026-10-16, отсутствие категории в городе.
+Он печатает конкретные карточки, объяснения, причины отказа и время ответа.
+
+Полный project gate (HTML-форма, UI badges и браузерные E2E) проверяется после интеграции
+с `frontend/denis`; backend не содержит альтернативной HTML-реализации.
